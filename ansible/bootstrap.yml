@@ -1,0 +1,29 @@
+---
+- name: Bootstrap Software Factory cluster configuration
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+  - name: Create example-app namespace
+    kubernetes.core.k8s:
+      state: present
+      definition:
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: example-app
+          labels:
+            argocd.argoproj.io/managed-by: openshift-gitops
+
+  - name: Create example ConfigMap
+    kubernetes.core.k8s:
+      state: present
+      definition:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: example-config
+          namespace: example-app
+        data:
+          environment: factory
+          cluster_role: software-factory
