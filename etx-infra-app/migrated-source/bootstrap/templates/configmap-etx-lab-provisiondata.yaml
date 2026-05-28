@@ -1,0 +1,95 @@
+# etx-infra-app/migrated-source/bootstrap/templates/configmap-etx-lab-provisiondata.yaml
+#
+# ETX Lab Workshop Provision Data ConfigMap
+#
+# This ConfigMap surfaces infrastructure URLs and credentials to RHDP/AgnosticV.
+# The demo.redhat.com/infra label allows automated discovery by RHDP components.
+#
+# Data exposed here is safe for student access (no cluster-admin credentials).
+{{- $platformValues := .Values.platformValues | default dict -}}
+{{- $gitlabEtxLab := get $platformValues "gitlabEtxLab" | default dict -}}
+{{- $quayEtxLab := get $platformValues "quayEtxLab" | default dict -}}
+{{- $vaultEtxLab := get $platformValues "vaultEtxLab" | default dict -}}
+{{- $multiClusterSetup := get $platformValues "multiClusterSetup" | default dict -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: etx-lab-provision-data
+  namespace: openshift-gitops
+  labels:
+    demo.redhat.com/infra: "true"
+    app.kubernetes.io/part-of: etx-lab-bootstrap
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+data:
+  # Cluster Information
+  cluster_domain: {{ .Values.deployer.domain | quote }}
+  cluster_api_url: {{ .Values.deployer.apiUrl | quote }}
+  cluster_guid: {{ .Values.deployer.guid | quote }}
+
+  # Keycloak (Red Hat Build of Keycloak)
+  keycloak_url: {{ printf "https://etx-sso.%s" .Values.deployer.domain | quote }}
+  keycloak_realm: "etx-lab"
+  keycloak_admin_user: "admin"
+  keycloak_admin_password: "openshift"
+
+  # Student Users (provisioned in etx-lab realm)
+  keycloak_users: |
+    - platform-admin (password: openshift)
+    - platform-user (password: openshift)
+    - platform-developer (password: openshift)
+
+  # GitLab
+  {{- if get $gitlabEtxLab "enabled" }}
+  gitlab_url: {{ printf "https://gitlab.%s" .Values.deployer.domain | quote }}
+  gitlab_root_user: "root"
+  gitlab_root_password: "openshift"
+  {{- else }}
+  gitlab_url: "disabled"
+  gitlab_root_user: "disabled"
+  gitlab_root_password: "disabled"
+  {{- end }}
+
+  # Quay (Red Hat Quay)
+  {{- if get $quayEtxLab "enabled" }}
+  quay_url: {{ printf "https://quay.%s" .Values.deployer.domain | quote }}
+  quay_admin_user: "quayadmin"
+  quay_admin_password: "openshift"
+  {{- else }}
+  quay_url: "disabled"
+  quay_admin_user: "disabled"
+  quay_admin_password: "disabled"
+  {{- end }}
+
+  # ETX GitOps (Argo CD)
+  argocd_url: {{ printf "https://etx-gitops-server-%s.%s" .Values.etxGitops.namespace .Values.deployer.domain | quote }}
+  argocd_note: "ETX GitOps admin plane. openshift-gitops remains the hidden bootstrap control plane."
+
+  # Workshop Metadata
+  workshop_name: "ETX Lab - Day 1 & 2"
+  workshop_version: "1.0.0"
+  infrastructure_components: |
+    - OpenShift GitOps bootstrap control plane
+    - ETX GitOps admin plane
+    - Keycloak Operator (RHBK)
+{{- if get $gitlabEtxLab "enabled" }}
+    - GitLab Community Edition
+{{- end }}
+{{- if get $quayEtxLab "enabled" }}
+    - Quay Enterprise
+{{- end }}
+{{- if get $vaultEtxLab "enabled" }}
+    - HashiCorp Vault
+{{- end }}
+{{- if get $multiClusterSetup "enabled" }}
+    - Multi-cluster namespace setup
+{{- end }}
+
+  student_deployed_components: |
+    - OpenShift DevSpaces (Lab 1)
+    - OpenShift Pipelines/Tekton (Lab 1)
+    - Student ArgoCD instance (Lab 1)
+    - OpenShift Developer Hub (Lab 2)
+    - MTA (Lab 2)
+    - TAS/TPA (Day 3)

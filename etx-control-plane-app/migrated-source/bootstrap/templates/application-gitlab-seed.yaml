@@ -1,0 +1,43 @@
+{{- if .Values.gitlabSeed.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gitlab-seed
+  namespace: {{ .Values.gitops.namespace }}
+  labels:
+    app.kubernetes.io/name: gitlab-seed
+    app.kubernetes.io/part-of: etx-lab-platform
+    demo.redhat.com/platform: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "50"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.gitlabSeed.git.repoURL }}
+    targetRevision: {{ .Values.gitlabSeed.git.targetRevision }}
+    path: {{ .Values.gitlabSeed.git.path }}
+    helm:
+      values: |
+        gitlab:
+          url: https://gitlab.{{ .Values.deployer.domain }}
+          namespace: gitlab
+        repositories:
+          {{- toYaml .Values.gitlabSeed.repositories | nindent 10 }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gitlab
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: false  # Don't re-run seeding job automatically
+    syncOptions:
+      - CreateNamespace=false  # gitlab namespace exists
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

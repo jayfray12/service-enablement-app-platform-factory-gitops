@@ -1,0 +1,48 @@
+{{- if .Values.platform.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: etx-bootstrap-platform
+  namespace: {{ .Values.etxGitops.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.platform.git.repoURL }}
+    targetRevision: {{ .Values.platform.git.targetRevision }}
+    path: {{ .Values.platform.git.path }}
+    helm:
+      values: |
+        # Forward deployer values from infra to platform
+        deployer:
+          domain: {{ .Values.deployer.domain }}
+          apiUrl: {{ .Values.deployer.apiUrl }}
+          guid: {{ .Values.deployer.guid | default "guid" }}
+
+        gitops:
+          namespace: {{ .Values.etxGitops.namespace }}
+
+        {{- if .Values.platformValues }}
+        {{- toYaml (omit .Values.platformValues "keycloakEtxLab") | nindent 8 }}
+        {{- end }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.etxGitops.namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+{{- end }}

@@ -1,0 +1,49 @@
+# etx-control-plane-app/migrated-source/workloads/gitlab-etx-lab/values.yaml
+#
+# GitLab ETX Lab Instance Configuration
+#
+# This chart deploys GitLab CE with PostgreSQL and Redis.
+# Configured with Keycloak OIDC authentication.
+
+namespace: gitlab
+
+deployer:
+  domain: apps.cluster-guid.sandbox.opentlc.com
+
+gitops:
+  namespace: etx-gitops
+
+instance:
+  hostname: gitlab
+  rootPassword: openshift
+  oidc:
+    enabled: true
+    provider: keycloak
+    issuer: https://etx-sso.apps.cluster-guid.sandbox.opentlc.com/realms/etx-lab
+    clientId: gitlab
+  automationUser:
+    enabled: true
+    username: etx-platform-bot
+    password: openshift
+    email: etx-platform-bot@example.com
+    displayName: etx-platform-bot
+    canCreateGroup: true
+  workshopAccess:
+    platformAdmin:
+      username: platform-admin
+      password: openshift
+      email: platform-admin@example.com
+      displayName: Platform Admin
+    platformDeveloper:
+      username: platform-developer
+      password: openshift
+      email: platform-developer@example.com
+      displayName: Platform Developer
+  seedRepository:
+    enabled: true
+    sourceUrl: https://github.com/rh-etx-app-platform/etx_app_base_app.git
+    targetGroup: software-factory
+    targetProject: etx_app_base_app
+    visibility: public
+    description: "Parasol base application for ETX workshop exercises"
+    githubToken: ""

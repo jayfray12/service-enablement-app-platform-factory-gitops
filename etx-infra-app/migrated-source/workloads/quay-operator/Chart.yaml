@@ -1,0 +1,12 @@
+apiVersion: v2
+name: quay-operator
+version: 1.0.0
+description: Red Hat Quay Enterprise Container Registry Operator
+type: application
+keywords:
+  - quay
+  - registry
+  - container
+  - operator
+maintainers:
+  - name: ETX Platform Team

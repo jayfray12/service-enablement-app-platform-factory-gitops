@@ -1,0 +1,49 @@
+---
+# Repository watched by Red Hat OpenShift GitOps.
+etx_git_repo_url: https://github.com/rhpds/service-enablement-app-platform-factory-gitops.git
+etx_git_revision: main
+
+# Runtime values. Leave empty to auto-discover or generate where possible.
+etx_cluster_domain: ""
+etx_cluster_api_url: ""
+etx_cluster_guid: ""
+etx_git_token: "{{ lookup('ansible.builtin.env', 'GITHUB_TOKEN') | default('', true) }}"
+etx_argocd_oidc_client_secret: ""
+etx_vault_oidc_client_secret: ""
+
+# RHPDS normally owns the base OpenShift GitOps installation. Set this to true
+# only for clusters where the base GitOps operator is not already provided.
+etx_manage_gitops_operator: false
+etx_gitops_operator_channel: latest
+etx_gitops_namespace: openshift-gitops
+etx_patch_base_argocd: true
+etx_wait_for_base_argocd: true
+
+# ETX layers.
+etx_infra_application_name: etx-infra
+etx_infra_application_namespace: openshift-gitops
+etx_infra_application_path: etx-infra-app/migrated-source/bootstrap
+
+etx_control_plane_application_name: etx-control-plane
+etx_control_plane_application_namespace: openshift-gitops
+etx_control_plane_application_path: etx-control-plane-app/migrated-source/bootstrap
+
+# Component flags migrated from bootstrap-etx-workshop.sh.
+etx_gitlab_enabled: true
+etx_quay_enabled: true
+etx_vault_enabled: true
+etx_web_terminal_enabled: true
+etx_multicluster_enabled: true
+
+# Pre/post-flight behavior.
+etx_validate_repository_access: true
+etx_validate_workshop_requirements: true
+etx_validate_cluster_sso_isolation: true
+etx_wait_for_applications: true
+etx_wait_for_infra_before_control_plane: true
+etx_application_wait_retries: 150
+etx_application_wait_delay: 10
+etx_base_argocd_wait_retries: 60
+etx_base_argocd_wait_delay: 10
+etx_endpoint_wait_retries: 120
+etx_endpoint_wait_delay: 5

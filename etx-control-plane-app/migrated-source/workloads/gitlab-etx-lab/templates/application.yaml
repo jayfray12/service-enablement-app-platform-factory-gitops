@@ -1,0 +1,130 @@
+# Deploy GitLab CE via official Helm chart
+# This Application is managed by this Helm chart to configure GitLab for ETX Lab
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gitlab-ce
+  namespace: {{ .Values.gitops.namespace }}
+  labels:
+    app.kubernetes.io/name: gitlab-ce
+    app.kubernetes.io/part-of: gitlab-etx-lab
+spec:
+  destination:
+    namespace: {{ .Values.namespace }}
+    server: https://kubernetes.default.svc
+  project: platform
+  source:
+    repoURL: https://charts.gitlab.io
+    chart: gitlab
+    targetRevision: 9.10.1
+    helm:
+      releaseName: gitlab
+      values: |
+        global:
+          edition: ce
+          hosts:
+            domain: {{ .Values.deployer.domain }}
+            https: true
+            gitlab:
+              name: {{ .Values.instance.hostname }}.{{ .Values.deployer.domain }}
+          ingress:
+            annotations:
+              route.openshift.io/termination: edge
+            configureCertmanager: false
+            class: openshift-default
+            tls:
+              enabled: false
+          {{- if .Values.instance.oidc.enabled }}
+          appConfig:
+            omniauth:
+              enabled: true
+              allowSingleSignOn: ['openid_connect']
+              blockAutoCreatedUsers: false
+              autoLinkUser: ['openid_connect']
+              providers:
+                - secret: gitlab-oidc-secret
+          {{- end }}
+
+        installCertmanager: false
+        upgradeCheck:
+          enabled: false
+        nginx-ingress:
+          enabled: false
+        prometheus:
+          install: false
+        registry:
+          enabled: false
+        gitlab-runner:
+          install: false
+
+        postgresql:
+          image:
+            debug: false
+
+        redis:
+          master:
+            persistence:
+              size: 8Gi
+
+        gitlab:
+          webservice:
+            minReplicas: 1
+            maxReplicas: 1
+            workerProcesses: 2
+            resources:
+              requests:
+                cpu: 500m
+                memory: 2Gi
+              limits:
+                cpu: "2"
+                memory: 4Gi
+
+          sidekiq:
+            minReplicas: 1
+            maxReplicas: 1
+            livenessProbe:
+              initialDelaySeconds: 180
+            resources:
+              requests:
+                cpu: 200m
+                memory: 1Gi
+              limits:
+                cpu: "1"
+                memory: 3Gi
+
+          toolbox:
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
+
+        gitlab-shell:
+          enabled: false
+
+        minio:
+          persistence:
+            size: 10Gi
+
+        gitaly:
+          persistence:
+            size: 50Gi
+
+        toolbox:
+          backups:
+            cron:
+              enabled: false
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=false
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m

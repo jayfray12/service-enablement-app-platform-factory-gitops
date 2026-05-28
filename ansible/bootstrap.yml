@@ -1,29 +1,10 @@
 ---
-- name: Bootstrap Software Factory cluster configuration
+- name: Bootstrap ETX platform GitOps entrypoints
   hosts: localhost
   connection: local
   gather_facts: false
-  tasks:
-  - name: Create example-app namespace
-    kubernetes.core.k8s:
-      state: present
-      definition:
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: example-app
-          labels:
-            argocd.argoproj.io/managed-by: openshift-gitops
 
-  - name: Create example ConfigMap
-    kubernetes.core.k8s:
-      state: present
-      definition:
-        apiVersion: v1
-        kind: ConfigMap
-        metadata:
-          name: example-config
-          namespace: example-app
-        data:
-          environment: factory
-          cluster_role: software-factory
+  roles:
+  - role: etx_bootstrap_preflight
+  - role: etx_gitops_bootstrap
+  - role: etx_postflight_validation

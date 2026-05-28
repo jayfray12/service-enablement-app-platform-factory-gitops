@@ -1,0 +1,225 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vault-init
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: vault-init
+    app.kubernetes.io/instance: etx-vault
+    app.kubernetes.io/part-of: etx-lab-platform
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app: vault-init
+    spec:
+      serviceAccountName: vault-init
+      restartPolicy: Never
+      containers:
+        - name: vault-init
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              NAMESPACE="{{ .Values.namespace }}"
+              VAULT_RELEASE="etx-vault"
+              VAULT_POD="${VAULT_RELEASE}-0"
+              VAULT_ADDR="http://${VAULT_RELEASE}.${NAMESPACE}.svc:8200"
+              BOOTSTRAP_SECRET="etx-vault-bootstrap"
+              VAULT_WAIT_TIMEOUT=120
+              DISCOVERY_WAIT_TIMEOUT=90
+
+              retry() {
+                local attempts="$1"
+                local delay="$2"
+                shift 2
+                local i
+
+                for ((i = 1; i <= attempts; i++)); do
+                  if "$@"; then
+                    return 0
+                  fi
+
+                  if [ "${i}" -lt "${attempts}" ]; then
+                    sleep "${delay}"
+                  fi
+                done
+
+                return 1
+              }
+
+              wait_for_pod_running() {
+                local waited=0
+
+                echo "Waiting for official Vault chart pod to exist..."
+                until oc get pod "${VAULT_POD}" -n "${NAMESPACE}" >/dev/null 2>&1; do
+                  sleep 5
+                  waited=$((waited + 5))
+                  if [ "${waited}" -ge "${VAULT_WAIT_TIMEOUT}" ]; then
+                    echo "Timed out waiting for ${VAULT_POD} to exist." >&2
+                    exit 1
+                  fi
+                done
+
+                waited=0
+                echo "Waiting for official Vault chart pod to be running..."
+                until [ "$(oc get pod "${VAULT_POD}" -n "${NAMESPACE}" -o jsonpath='{.status.phase}')" = "Running" ]; do
+                  sleep 5
+                  waited=$((waited + 5))
+                  if [ "${waited}" -ge "${VAULT_WAIT_TIMEOUT}" ]; then
+                    echo "Timed out waiting for ${VAULT_POD} to reach Running phase." >&2
+                    exit 1
+                  fi
+                done
+              }
+
+              wait_for_vault_api() {
+                echo "Waiting for Vault API to respond..."
+                retry 12 5 oc exec -n "${NAMESPACE}" "${VAULT_POD}" -- sh -c "VAULT_ADDR='${VAULT_ADDR}' vault status >/dev/null 2>&1; rc=\$?; [ \"\${rc}\" -eq 0 ] || [ \"\${rc}\" -eq 2 ]"
+              }
+
+              wait_for_oidc_discovery() {
+                local waited=0
+
+                echo "Waiting for OIDC discovery endpoint..."
+                until curl -ksSf "{{ .Values.oidcAuth.discoveryUrl }}/.well-known/openid-configuration" >/dev/null; do
+                  sleep 5
+                  waited=$((waited + 5))
+                  if [ "${waited}" -ge "${DISCOVERY_WAIT_TIMEOUT}" ]; then
+                    echo "Timed out waiting for OIDC discovery endpoint." >&2
+                    exit 1
+                  fi
+                done
+              }
+
+              wait_for_pod_running
+              sleep 5
+              wait_for_vault_api
+
+              vault_status_field() {
+                local field="$1"
+                local status_json
+
+                status_json=$(oc exec -n "${NAMESPACE}" "${VAULT_POD}" -- sh -c 'vault status -format=json 2>/dev/null || true')
+                printf '%s\n' "${status_json}" | grep -o "\"${field}\":[^,}]*" | head -n1 | cut -d':' -f2 | tr -d ' "'
+              }
+
+              echo "Checking initialization status..."
+              if ! oc get secret "${BOOTSTRAP_SECRET}" -n "${NAMESPACE}" >/dev/null 2>&1; then
+                echo "Initializing Vault integrated storage..."
+                INIT_OUTPUT=$(oc exec -n "${NAMESPACE}" "${VAULT_POD}" -- vault operator init -key-shares=1 -key-threshold=1)
+
+                UNSEAL_KEY=$(printf '%s\n' "${INIT_OUTPUT}" | awk '/Unseal Key 1:/ {print $NF}')
+                ROOT_TOKEN=$(printf '%s\n' "${INIT_OUTPUT}" | awk '/Initial Root Token:/ {print $NF}')
+
+                oc create secret generic "${BOOTSTRAP_SECRET}" \
+                  --from-literal=unseal-key="${UNSEAL_KEY}" \
+                  --from-literal=root-token="${ROOT_TOKEN}" \
+                  -n "${NAMESPACE}" \
+                  --dry-run=client -o yaml | oc apply -f -
+              else
+                echo "Bootstrap secret already exists. Skipping Vault initialization."
+              fi
+
+              SEAL_STATUS=$(vault_status_field sealed)
+              if [ -z "${SEAL_STATUS}" ]; then
+                SEAL_STATUS="true"
+              fi
+
+              if [ "${SEAL_STATUS}" = "true" ]; then
+                echo "Unsealing Vault..."
+                UNSEAL_KEY=$(oc get secret "${BOOTSTRAP_SECRET}" -n "${NAMESPACE}" -o jsonpath='{.data.unseal-key}' | base64 -d)
+                oc exec -n "${NAMESPACE}" "${VAULT_POD}" -- vault operator unseal "${UNSEAL_KEY}"
+                sleep 5
+                wait_for_vault_api
+              fi
+
+              ROOT_TOKEN=$(oc get secret "${BOOTSTRAP_SECRET}" -n "${NAMESPACE}" -o jsonpath='{.data.root-token}' | base64 -d)
+
+              {{- if .Values.kubernetesAuth.enabled }}
+              echo "Configuring Kubernetes auth..."
+              TOKEN_REVIEWER_JWT=$(oc create token "${VAULT_RELEASE}" -n "${NAMESPACE}" --duration=24h)
+              KUBE_HOST="https://kubernetes.default.svc"
+              POLICY_B64='{{ .Values.kubernetesAuth.policyRules | b64enc }}'
+
+              oc exec -n "${NAMESPACE}" "${VAULT_POD}" -- sh -c "VAULT_ADDR='${VAULT_ADDR}' VAULT_TOKEN='${ROOT_TOKEN}' vault auth enable kubernetes 2>/dev/null || true"
+              oc exec -n "${NAMESPACE}" "${VAULT_POD}" -- sh -c "VAULT_ADDR='${VAULT_ADDR}' VAULT_TOKEN='${ROOT_TOKEN}' vault write auth/kubernetes/config token_reviewer_jwt='${TOKEN_REVIEWER_JWT}' kubernetes_host='${KUBE_HOST}' kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+              oc exec -n "${NAMESPACE}" "${VAULT_POD}" -- sh -c "echo '${POLICY_B64}' | base64 -d > /tmp/policy.hcl && VAULT_ADDR='${VAULT_ADDR}' VAULT_TOKEN='${ROOT_TOKEN}' vault policy write {{ .Values.kubernetesAuth.policy }} /tmp/policy.hcl"
+              oc exec -n "${NAMESPACE}" "${VAULT_POD}" -- sh -c "VAULT_ADDR='${VAULT_ADDR}' VAULT_TOKEN='${ROOT_TOKEN}' vault write auth/kubernetes/role/{{ .Values.kubernetesAuth.role }} bound_service_account_names='*' bound_service_account_namespaces='*' policies={{ .Values.kubernetesAuth.policy }} ttl=24h"
+              {{- end }}
+
+              {{- if .Values.oidcAuth.enabled }}
+              echo "Configuring OIDC auth..."
+              if [ -z "{{ .Values.oidcAuth.clientId }}" ] || [ -z "{{ .Values.oidcAuth.clientSecret }}" ]; then
+                echo "OIDC client settings are incomplete." >&2
+                exit 1
+              fi
+              wait_for_oidc_discovery
+              oc exec -n "${NAMESPACE}" "${VAULT_POD}" -- sh -c "VAULT_ADDR='${VAULT_ADDR}' VAULT_TOKEN='${ROOT_TOKEN}' vault auth enable oidc 2>/dev/null || true"
+              retry 6 10 oc exec -n "${NAMESPACE}" "${VAULT_POD}" -- sh -c "VAULT_ADDR='${VAULT_ADDR}' VAULT_TOKEN='${ROOT_TOKEN}' vault write auth/oidc/config oidc_discovery_url='{{ .Values.oidcAuth.discoveryUrl }}' oidc_client_id='{{ .Values.oidcAuth.clientId }}' oidc_client_secret='{{ .Values.oidcAuth.clientSecret }}' default_role='{{ .Values.oidcAuth.defaultRole }}'"
+              retry 6 10 oc exec -n "${NAMESPACE}" "${VAULT_POD}" -- sh -c "VAULT_ADDR='${VAULT_ADDR}' VAULT_TOKEN='${ROOT_TOKEN}' vault write auth/oidc/role/{{ .Values.oidcAuth.defaultRole }} bound_audiences='{{ .Values.oidcAuth.clientId }}' allowed_redirect_uris='https://vault.{{ .Values.deployer.domain }}/ui/vault/auth/oidc/oidc/callback' allowed_redirect_uris='http://localhost:8250/oidc/callback' oidc_scopes='openid' user_claim='preferred_username' groups_claim='' policies='default,{{ .Values.kubernetesAuth.policy }}' ttl=8h"
+              {{- end }}
+
+              echo "Vault bootstrap completed."
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "300m"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault-init
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: vault-init
+    app.kubernetes.io/instance: etx-vault
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vault-init
+  labels:
+    app.kubernetes.io/name: vault-init
+    app.kubernetes.io/instance: etx-vault
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/exec", "secrets", "configmaps"]
+    verbs: ["get", "list", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts/token"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vault-init
+  labels:
+    app.kubernetes.io/name: vault-init
+    app.kubernetes.io/instance: etx-vault
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vault-init
+subjects:
+  - kind: ServiceAccount
+    name: vault-init
+    namespace: {{ .Values.namespace }}

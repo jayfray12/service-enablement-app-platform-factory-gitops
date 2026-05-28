@@ -28,8 +28,22 @@ example-app/
   route.yaml         OpenShift Route with TLS edge termination
 
 ansible/
-  bootstrap.yml      Playbook for imperative setup steps (namespace creation, ConfigMaps, RBAC)
+  bootstrap.yml      Playbook for imperative ETX bootstrap steps
   requirements.yml   Ansible collection dependencies (kubernetes.core)
+
+etx-infra-app/
+  migrated-source/   ETX infra GitOps content migrated from etx_app_platform_bootstrap
+  base/              Reserved kustomize base for RHPDS-specific ETX infra deltas
+  overlays/factory/  Factory overlay for ETX infra deltas
+
+etx-control-plane-app/
+  migrated-source/   ETX platform GitOps content migrated from etx_app_platform_bootstrap
+  base/              Reserved kustomize base for ETX control-plane deltas
+  overlays/factory/  Factory overlay for ETX control-plane deltas
+
+docs/
+  etx-migration-analysis.md
+  catalog-item-integration.md
 ```
 
 ## Getting Started
@@ -63,9 +77,18 @@ spec:
       selfHeal: true
 ```
 
-### 3. Run the Ansible bootstrap (optional)
+### 3. Run the Ansible bootstrap
 
-The `ansible/bootstrap.yml` playbook handles tasks that cannot be expressed declaratively in GitOps — for example, creating namespaces with specific labels or configuring external integrations.
+The `ansible/bootstrap.yml` playbook is the ETX bootstrap entrypoint. It handles
+the imperative work that should not be committed as static GitOps state:
+
+- preflight discovery of cluster domain, API URL, and GUID
+- cluster default SSO isolation guardrail
+- base OpenShift GitOps readiness and ETX health-check/RBAC patching
+- optional repository credential creation
+- generated OIDC secrets for ETX Argo CD and Vault
+- ordered creation of the ETX infra and control-plane root Argo CD Applications
+- postflight checks for ETX Applications, Keycloak realm import, and OIDC discovery
 
 ```bash
 # Install required collections
@@ -74,6 +97,22 @@ ansible-galaxy collection install -r ansible/requirements.yml
 # Run the bootstrap playbook
 ansible-playbook ansible/bootstrap.yml
 ```
+
+Runtime overrides mirror the old `bootstrap-etx-workshop.sh` flags:
+
+```bash
+GITHUB_TOKEN=$(gh auth token) ansible-playbook ansible/bootstrap.yml \
+  -e etx_git_revision=main \
+  -e etx_quay_enabled=false \
+  -e etx_multicluster_enabled=false
+```
+
+`etx_manage_gitops_operator` defaults to `false` because the Red Hat Demo
+Platform framework already provides the base OpenShift GitOps capability. Set it
+to `true` only for clusters where that base is absent.
+
+For Red Hat Demo Platform catalog item integration, see
+`docs/catalog-item-integration.md`.
 
 ## example-app
 

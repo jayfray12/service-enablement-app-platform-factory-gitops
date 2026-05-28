@@ -1,0 +1,81 @@
+# etx-control-plane-app/migrated-source/workloads/keycloak-etx-lab/values.yaml
+#
+# Keycloak ETX Lab Instance Configuration
+#
+# This chart deploys:
+#   - Keycloak instance (via Keycloak CR)
+#   - etx-lab realm
+#   - Student users (platform-admin, platform-user, platform-developer)
+#   - OIDC clients for GitLab, Quay, and Argo CD
+#
+# ISOLATION STRATEGY:
+#   - Dedicated namespace: etx-keycloak (NOT keycloak)
+#   - All resources prefixed with 'etx-keycloak-'
+#   - Hostname: etx-sso (NOT sso)
+#   - Completely isolated from cluster's default SSO
+
+namespace: etx-keycloak
+
+deployer:
+  domain: apps.cluster-guid.sandbox.opentlc.com
+
+instance:
+  replicas: 1
+  hostname: etx-sso
+
+realm:
+  name: etx-lab
+  displayName: "ETX Lab Workshop"
+
+users:
+  - username: platform-admin
+    password: openshift
+    firstName: Platform
+    lastName: Admin
+    groups:
+      - argocd-admins
+  - username: platform-user
+    password: openshift
+    firstName: Platform
+    lastName: User
+  - username: platform-developer
+    password: openshift
+    firstName: Platform
+    lastName: Developer
+
+clients:
+  gitlab:
+    enabled: true
+    clientId: gitlab
+    redirectUris:
+      - https://gitlab.apps.cluster-guid.sandbox.opentlc.com/users/auth/openid_connect/callback
+  quay:
+    enabled: true
+    clientId: quay
+    redirectUris:
+      - https://quay.apps.cluster-guid.sandbox.opentlc.com/oauth2/redhat/callback
+  argocd:
+    enabled: true
+    clientId: argocd
+    clientSecret: changeme
+    redirectUris:
+      - https://etx-gitops-server-etx-gitops.apps.cluster-guid.sandbox.opentlc.com/auth/callback
+    webOrigins:
+      - https://etx-gitops-server-etx-gitops.apps.cluster-guid.sandbox.opentlc.com
+  vault:
+    enabled: true
+    clientId: vault
+    clientSecret: changeme
+    redirectUris:
+      - https://vault.apps.cluster-guid.sandbox.opentlc.com/ui/vault/auth/oidc/oidc/callback
+      - http://localhost:8250/oidc/callback
+
+groups:
+  - name: argocd-admins
+
+clientScopes:
+  groups:
+    enabled: true
+    name: groups
+
+# NOTE: Hostname changed from 'sso' to 'etx-sso' to avoid collision with cluster's OAuth SSO

@@ -1,0 +1,7 @@
+apiVersion: v2
+name: etx-lab-infra-bootstrap
+version: 1.0.0
+description: ETX Lab Workshop Infrastructure Bootstrap (Operators)
+maintainers:
+  - name: ETX Platform Team
+    email: etx-platform@redhat.com

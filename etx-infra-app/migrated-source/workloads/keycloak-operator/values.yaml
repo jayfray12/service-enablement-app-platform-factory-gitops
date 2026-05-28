@@ -1,0 +1,32 @@
+# etx-infra-app/migrated-source/workloads/keycloak-operator/values.yaml
+#
+# Red Hat Build of Keycloak Operator Configuration
+#
+# This chart deploys the RHBK operator for ETX Lab SSO/OIDC services.
+# The operator enables declarative Keycloak instances and realms.
+#
+# ISOLATION STRATEGY:
+#   - Dedicated namespace: etx-keycloak (NOT keycloak)
+#   - Scoped operator: targetNamespaces limited to etx-keycloak only
+#   - No collision with cluster's default SSO (namespace, routes, resources)
+#   - All resources prefixed with 'etx-' to avoid conflicts
+
+# Namespace where operator and Keycloak instances will run
+# CRITICAL: Use dedicated namespace to isolate from cluster's default SSO
+namespace: etx-keycloak
+
+# Operator Subscription settings
+subscription:
+  channel: stable
+  name: rhbk-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic
+
+# OperatorGroup configuration
+operatorGroup:
+  create: true
+  # CRITICAL: Limit operator scope to etx-keycloak namespace ONLY
+  # This prevents operator from reconciling cluster's default SSO resources
+  targetNamespaces:
+    - etx-keycloak

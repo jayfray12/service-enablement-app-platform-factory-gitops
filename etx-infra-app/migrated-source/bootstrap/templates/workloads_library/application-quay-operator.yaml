@@ -1,0 +1,42 @@
+{{- if .Values.quayOperator.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: quay-operator
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: quay-operator
+    app.kubernetes.io/part-of: etx-lab-infra
+    demo.redhat.com/infra: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: infra
+  source:
+    repoURL: {{ .Values.quayOperator.git.repoURL }}
+    targetRevision: {{ .Values.quayOperator.git.targetRevision }}
+    path: {{ .Values.quayOperator.git.path }}
+    helm:
+      values: |
+        namespace: {{ .Values.quayOperator.namespace }}
+        subscription:
+          channel: {{ .Values.quayOperator.channel }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.quayOperator.namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+{{- end }}

@@ -1,0 +1,249 @@
+# etx-control-plane-app/migrated-source/bootstrap/values.yaml
+#
+# ETX Lab Workshop Platform Bootstrap - Configuration Layer
+#
+# This chart is spawned by etx-infra-app/migrated-source/bootstrap via application-bootstrap-platform.yaml
+# It receives deployer values and platformValues forwarded from the infra layer.
+#
+# What this chart does:
+#   1. Creates child Applications for each enabled platform workload
+#   2. Deploys actual service instances (Keycloak realms, GitLab, Quay)
+#   3. Runs configuration jobs (GitLab seeding)
+#
+# HOW TO CONTROL FROM CATALOG:
+#   In your AgnosticV cluster common.yaml, set:
+#     ocp4_workload_gitops_bootstrap_helm_values:
+#       keycloakOperator:
+#         enabled: true           # <-- infra layer (operator)
+#       platformValues:
+#         keycloakEtxLab:
+#           enabled: true         # <-- platform layer (instance)
+
+# ---------------------------------------------------------------------------
+# Git defaults — applied to every workload via YAML anchors
+# ---------------------------------------------------------------------------
+default_settings: &git_defaults
+  repoURL: https://github.com/rhpds/service-enablement-app-platform-factory-gitops.git
+  targetRevision: main
+
+# ---------------------------------------------------------------------------
+# deployer — forwarded from infra bootstrap
+# These are injected automatically, no need to set in catalog
+# ---------------------------------------------------------------------------
+deployer:
+  domain: apps.cluster-guid.sandbox.opentlc.com
+  apiUrl: https://api.cluster-guid.sandbox.opentlc.com:6443
+  guid: guid
+
+gitops:
+  namespace: etx-gitops
+
+# ===========================================================================
+# WORKLOADS LIBRARY - ETX Lab Platform
+# Pre-built Helm charts for ETX Lab service instances
+# All disabled by default - enable from catalog via platformValues
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# keycloakEtxLab — Keycloak instance with etx-lab realm
+# Deploys Keycloak CR, realm, users, clients for GitLab/Quay/Argo CD OIDC
+# Requires: keycloakOperator (infra layer)
+# ISOLATION: Uses dedicated namespace etx-keycloak (NOT keycloak)
+# ---------------------------------------------------------------------------
+keycloakEtxLab:
+  enabled: false
+  namespace: etx-keycloak
+  # Keycloak instance configuration
+  instance:
+    replicas: 1
+    hostname: etx-sso.{{ .Values.deployer.domain }}
+  # Realm configuration
+  realm:
+    name: etx-lab
+    displayName: "ETX Lab Workshop"
+  # Student users
+  users:
+    - username: platform-admin
+      password: openshift
+      firstName: Platform
+      lastName: Admin
+    - username: platform-user
+      password: openshift
+      firstName: Platform
+      lastName: User
+    - username: platform-developer
+      password: openshift
+      firstName: Platform
+      lastName: Developer
+  # OIDC clients
+  clients:
+    gitlab:
+      enabled: true
+      clientId: gitlab
+      redirectUris:
+        - https://gitlab.{{ .Values.deployer.domain }}/users/auth/openid_connect/callback
+    quay:
+      enabled: true
+      clientId: quay
+      redirectUris:
+        - https://quay.{{ .Values.deployer.domain }}/oauth2/callback
+        - https://quay.{{ .Values.deployer.domain }}/oauth2/redhat/callback
+        - https://quay.{{ .Values.deployer.domain }}/*
+    argocd:
+      enabled: true
+      clientId: argocd
+      clientSecret: changeme
+      redirectUris:
+        - https://etx-gitops-server-{{ .Values.gitops.namespace }}.{{ .Values.deployer.domain }}/auth/callback
+      webOrigins:
+        - https://etx-gitops-server-{{ .Values.gitops.namespace }}.{{ .Values.deployer.domain }}
+    vault:
+      enabled: true
+      clientId: vault
+      clientSecret: changeme
+      redirectUris:
+        - https://vault.{{ .Values.deployer.domain }}/ui/vault/auth/oidc/oidc/callback
+        - http://localhost:8250/oidc/callback
+  groups:
+    - name: argocd-admins
+  clientScopes:
+    groups:
+      enabled: true
+      name: groups
+  git:
+    path: etx-control-plane-app/migrated-source/workloads/keycloak-etx-lab
+    <<: *git_defaults
+
+# ---------------------------------------------------------------------------
+# gitlabEtxLab — GitLab Community Edition instance
+# Deploys GitLab with PostgreSQL and Redis
+# Uses Keycloak OIDC for authentication
+# ---------------------------------------------------------------------------
+gitlabEtxLab:
+  enabled: false
+  namespace: gitlab
+  # GitLab instance configuration
+  instance:
+    hostname: gitlab.{{ .Values.deployer.domain }}
+    rootPassword: openshift
+    # OIDC integration
+    oidc:
+      enabled: true
+      provider: keycloak
+      issuer: https://etx-sso.{{ .Values.deployer.domain }}/realms/etx-lab
+      clientId: gitlab
+    seedRepository:
+      githubToken: ""
+  git:
+    path: etx-control-plane-app/migrated-source/workloads/gitlab-etx-lab
+    <<: *git_defaults
+
+# ---------------------------------------------------------------------------
+# quayEtxLab — Red Hat Quay instance
+# Deploys Quay registry with PostgreSQL
+# Uses Keycloak OIDC for authentication
+# ---------------------------------------------------------------------------
+quayEtxLab:
+  enabled: false
+  namespace: quay
+  # Quay instance configuration
+  instance:
+    hostname: quay.{{ .Values.deployer.domain }}
+    # OIDC integration
+    oidc:
+      enabled: true
+      provider: keycloak
+      issuer: https://etx-sso.{{ .Values.deployer.domain }}/realms/etx-lab
+      clientId: quay
+  # Initial superuser
+  superuser:
+    username: quayadmin
+    password: openshift
+    email: admin@example.com
+  git:
+    path: etx-control-plane-app/migrated-source/workloads/quay-etx-lab
+    <<: *git_defaults
+
+# ---------------------------------------------------------------------------
+# vaultEtxLab — HashiCorp Vault instance
+# Deploys Vault using the official HashiCorp Helm chart for OpenShift
+# Requires: vaultSecretsOperator (infra layer)
+# WORKSHOP BASELINE: official chart + integrated Raft storage, single replica
+# ---------------------------------------------------------------------------
+vaultEtxLab:
+  enabled: false
+  namespace: vault
+  instance:
+    replicas: 1
+    storage: 1Gi
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+  kubernetesAuth:
+    enabled: true
+    role: etx-lab-default
+    policy: etx-lab-secrets
+    policyRules: |
+      path "secret/data/etx-lab/*" {
+        capabilities = ["create", "read", "update", "delete", "list"]
+      }
+      path "secret/metadata/etx-lab/*" {
+        capabilities = ["list", "read", "delete"]
+      }
+  oidcAuth:
+    enabled: true
+    discoveryUrl: https://etx-sso.{{ .Values.deployer.domain }}/realms/etx-lab
+    clientId: vault
+    clientSecret: changeme
+    defaultRole: etx-lab-user
+  git:
+    path: etx-control-plane-app/migrated-source/workloads/vault-etx-lab
+    <<: *git_defaults
+
+# ---------------------------------------------------------------------------
+# multiClusterSetup — Multi-cluster namespace setup
+# Creates the primary cluster application namespace used by the lab.
+# Secondary environment namespaces are created by scripts/enroll-secondary-cluster.sh.
+# ---------------------------------------------------------------------------
+multiClusterSetup:
+  enabled: false
+  # Primary cluster namespaces
+  primaryCluster:
+    namespaces:
+      - etx-app-dev
+  # Secondary cluster configuration (if available)
+  secondaryCluster:
+    enabled: false
+    apiUrl: ""  # Set from catalog if multi-cluster
+    namespaces:
+      - etx-app-staging
+      - etx-app-prod
+  git:
+    path: etx-control-plane-app/migrated-source/workloads/multi-cluster-setup
+    <<: *git_defaults
+
+# ---------------------------------------------------------------------------
+# gitlabSeed — GitLab repository seeding job
+# Creates student repositories in GitLab with workshop content
+# Runs as Kubernetes Job after GitLab is ready
+# ---------------------------------------------------------------------------
+gitlabSeed:
+  enabled: false
+  # GitLab connection
+  gitlab:
+    url: https://gitlab.{{ .Values.deployer.domain }}
+    rootToken: ""  # Generated by gitlab-etx-lab workload
+  # Repositories to seed
+  repositories:
+    - name: parasol-insurance-lab
+      visibility: public
+      description: "Parasol Insurance - Day 1 & 2 Lab"
+      sourceUrl: https://github.com/rh-etx-app-platform/parasol-insurance.git
+      targetGroup: student
+  git:
+    path: etx-control-plane-app/migrated-source/workloads/gitlab-seed
+    <<: *git_defaults

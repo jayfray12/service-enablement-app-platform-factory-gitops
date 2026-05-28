@@ -1,0 +1,42 @@
+{{- if .Values.webTerminalOperator.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: web-terminal-operator
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: web-terminal-operator
+    app.kubernetes.io/part-of: etx-lab-infra
+    demo.redhat.com/infra: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: infra
+  source:
+    repoURL: {{ .Values.webTerminalOperator.git.repoURL }}
+    targetRevision: {{ .Values.webTerminalOperator.git.targetRevision }}
+    path: {{ .Values.webTerminalOperator.git.path }}
+    helm:
+      values: |
+        namespace: {{ .Values.webTerminalOperator.namespace }}
+        subscription:
+          channel: {{ .Values.webTerminalOperator.channel }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.webTerminalOperator.namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+{{- end }}

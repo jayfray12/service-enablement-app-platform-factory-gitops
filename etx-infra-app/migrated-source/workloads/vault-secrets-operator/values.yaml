@@ -1,0 +1,33 @@
+# etx-infra-app/migrated-source/workloads/vault-secrets-operator/values.yaml
+#
+# HashiCorp Vault Secrets Operator Configuration
+#
+# This chart deploys the Vault Secrets Operator for ETX Lab secrets management.
+# The operator enables declarative Vault integration via CRDs:
+#   - VaultConnection
+#   - VaultAuth
+#   - VaultStaticSecret
+#   - VaultDynamicSecret
+#   - VaultPKISecret
+#
+# CLUSTER-WIDE OPERATOR:
+#   - Installs to openshift-operators namespace
+#   - AllNamespaces install mode
+#   - No OperatorGroup needed (cluster-scoped)
+
+# Namespace where operator runs
+# Note: Vault Secrets Operator is cluster-scoped, always openshift-operators
+namespace: openshift-operators
+
+# Operator Subscription settings
+subscription:
+  channel: stable
+  name: vault-secrets-operator
+  source: certified-operators
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic
+
+# OperatorGroup configuration
+# Vault Secrets Operator is cluster-scoped, so no OperatorGroup needed
+operatorGroup:
+  create: false

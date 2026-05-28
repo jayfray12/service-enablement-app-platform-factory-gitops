@@ -1,0 +1,59 @@
+apiVersion: argoproj.io/v1beta1
+kind: ArgoCD
+metadata:
+  name: etx-gitops
+  namespace: {{ .Values.namespace }}
+spec:
+  server:
+    route:
+      enabled: true
+  oidcConfig: |
+    name: ETX Keycloak
+    issuer: {{ .Values.sso.issuer }}
+    clientID: {{ .Values.sso.clientId }}
+    clientSecret: $etx-gitops-oidc-secret:clientSecret
+    requestedScopes:
+      - openid
+    requestedIDTokenClaims:
+      groups:
+        essential: true
+    logoutURL: {{ .Values.sso.logoutUrl }}
+  rbac:
+    defaultPolicy: 'role:none'
+    scopes: '[groups, preferred_username]'
+    policy: |
+      p, role:none, *, *, */*, deny
+      p, role:platform-developer, projects, *, tenants, allow
+      p, role:platform-developer, clusters, get, *, allow
+      p, role:platform-developer, repositories, get, *, allow
+      p, role:platform-developer, applications, *, tenants/*, allow
+      p, role:platform-developer, applicationsets, *, tenants/*, allow
+      p, role:platform-developer, logs, *, tenants/*, allow
+      p, role:platform-developer, exec, *, tenants/*, allow
+      p, role:platform-developer, certificates, *, tenants/*, allow
+      p, role:platform-developer, gpgkeys, *, tenants/*, allow
+      g, platform-developer, role:platform-developer
+      g, platform-admin, role:admin
+      g, argocd-admins, role:admin
+      g, system:cluster-admins, role:admin
+      g, cluster-admins, role:admin
+      g, admin, role:admin
+  resourceHealthChecks:
+    - group: quay.redhat.com
+      kind: QuayRegistry
+      check: |
+        hs = {}
+        if obj.status ~= nil then
+          if obj.status.conditions ~= nil then
+            for i, condition in ipairs(obj.status.conditions) do
+              if condition.type == "Available" and condition.status == "True" then
+                hs.status = "Healthy"
+                hs.message = "Quay is available"
+                return hs
+              end
+            end
+          end
+        end
+        hs.status = "Progressing"
+        hs.message = "Quay is deploying"
+        return hs

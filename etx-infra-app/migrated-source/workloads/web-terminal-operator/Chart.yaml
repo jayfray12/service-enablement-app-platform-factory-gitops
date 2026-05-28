@@ -1,0 +1,13 @@
+apiVersion: v2
+name: web-terminal-operator
+version: 1.0.0
+description: OpenShift Web Terminal Operator
+type: application
+keywords:
+  - web-terminal
+  - terminal
+  - developer-tools
+  - openshift
+  - operator
+maintainers:
+  - name: ETX Platform Team

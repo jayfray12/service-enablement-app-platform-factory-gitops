@@ -1,0 +1,12 @@
+apiVersion: v2
+name: gitlab-etx-lab
+version: 1.0.0
+description: GitLab Community Edition instance for ETX Lab
+type: application
+keywords:
+  - gitlab
+  - git
+  - scm
+  - etx-lab
+maintainers:
+  - name: ETX Platform Team

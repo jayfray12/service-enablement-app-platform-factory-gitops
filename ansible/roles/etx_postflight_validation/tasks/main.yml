@@ -1,0 +1,145 @@
+---
+- name: Wait for ETX root Applications to reconcile
+  kubernetes.core.k8s_info:
+    api_version: argoproj.io/v1alpha1
+    kind: Application
+    namespace: "{{ item.namespace }}"
+    name: "{{ item.name }}"
+  register: etx_root_application_status
+  retries: "{{ etx_application_wait_retries }}"
+  delay: "{{ etx_application_wait_delay }}"
+  until:
+  - etx_root_application_status.resources | length > 0
+  - etx_root_application_status.resources[0].status.sync.status | default('') == 'Synced'
+  - etx_root_application_status.resources[0].status.health.status | default('') in ['Healthy', 'Progressing']
+  loop:
+  - name: "{{ etx_infra_application_name }}"
+    namespace: "{{ etx_infra_application_namespace }}"
+  - name: "{{ etx_control_plane_application_name }}"
+    namespace: "{{ etx_control_plane_application_namespace }}"
+  when: etx_wait_for_applications | bool
+
+- name: Report ETX GitOps entrypoints
+  ansible.builtin.debug:
+    msg:
+    - "ETX infra Application: {{ etx_infra_application_namespace }}/{{ etx_infra_application_name }}"
+    - "ETX control-plane Application: {{ etx_control_plane_application_namespace }}/{{ etx_control_plane_application_name }}"
+    - "Repository: {{ etx_git_repo_url }} @ {{ etx_git_revision }}"
+
+- name: Build expected ETX child Application list
+  ansible.builtin.set_fact:
+    etx_expected_child_applications: >-
+      {{
+        [
+          {'name': 'etx-gitops-bootstrap', 'namespace': etx_gitops_namespace, 'required': true},
+          {'name': 'keycloak-operator', 'namespace': etx_gitops_namespace, 'required': true},
+          {'name': 'etx-keycloak', 'namespace': etx_gitops_namespace, 'required': true},
+          {'name': 'web-terminal-operator', 'namespace': etx_gitops_namespace, 'required': etx_web_terminal_enabled | bool},
+          {'name': 'quay-operator', 'namespace': etx_gitops_namespace, 'required': etx_quay_enabled | bool},
+          {'name': 'vault-secrets-operator', 'namespace': etx_gitops_namespace, 'required': etx_vault_enabled | bool},
+          {'name': 'etx-gitlab', 'namespace': 'etx-gitops', 'required': etx_gitlab_enabled | bool},
+          {'name': 'etx-quay', 'namespace': 'etx-gitops', 'required': etx_quay_enabled | bool},
+          {'name': 'etx-vault', 'namespace': 'etx-gitops', 'required': etx_vault_enabled | bool},
+          {'name': 'etx-multi-cluster-setup', 'namespace': 'etx-gitops', 'required': etx_multicluster_enabled | bool}
+        ]
+        | selectattr('required')
+        | list
+      }}
+  when: etx_validate_workshop_requirements | bool
+
+- name: Wait for expected ETX child Applications
+  kubernetes.core.k8s_info:
+    api_version: argoproj.io/v1alpha1
+    kind: Application
+    namespace: "{{ item.namespace }}"
+    name: "{{ item.name }}"
+  register: etx_child_application_status
+  retries: "{{ etx_application_wait_retries }}"
+  delay: "{{ etx_application_wait_delay }}"
+  until:
+  - etx_child_application_status.resources | length > 0
+  - etx_child_application_status.resources[0].status.sync.status | default('') == 'Synced'
+  - etx_child_application_status.resources[0].status.health.status | default('') in ['Healthy', 'Progressing']
+  loop: "{{ etx_expected_child_applications }}"
+  when:
+  - etx_validate_workshop_requirements | bool
+  - etx_wait_for_applications | bool
+
+- name: Wait for ETX Keycloak realm import
+  kubernetes.core.k8s_info:
+    api_version: k8s.keycloak.org/v2alpha1
+    kind: KeycloakRealmImport
+    namespace: etx-keycloak
+    name: etx-lab
+  register: etx_realm_import_status
+  retries: "{{ etx_application_wait_retries }}"
+  delay: "{{ etx_application_wait_delay }}"
+  until:
+  - etx_realm_import_status.resources | length > 0
+  - >-
+    {{
+      etx_realm_import_status.resources[0].status.conditions
+      | default([])
+      | selectattr('type', 'equalto', 'Done')
+      | selectattr('status', 'equalto', 'True')
+      | list
+      | length > 0
+    }}
+  when: etx_validate_workshop_requirements | bool
+
+- name: Wait for ETX Keycloak OIDC discovery endpoint
+  ansible.builtin.uri:
+    url: "https://etx-sso.{{ etx_cluster_domain_effective }}/realms/etx-lab/.well-known/openid-configuration"
+    method: GET
+    validate_certs: false
+    status_code:
+    - 200
+    return_content: true
+  register: etx_keycloak_discovery
+  retries: "{{ etx_endpoint_wait_retries }}"
+  delay: "{{ etx_endpoint_wait_delay }}"
+  until:
+  - etx_keycloak_discovery.status == 200
+  - "'issuer' in etx_keycloak_discovery.content"
+  when: etx_validate_workshop_requirements | bool
+
+- name: Check cluster default SSO after ETX deployment
+  ansible.builtin.uri:
+    url: "https://sso.{{ etx_cluster_domain_effective }}/realms/sso/.well-known/openid-configuration"
+    method: GET
+    validate_certs: false
+    status_code:
+    - 200
+    - 404
+    return_content: true
+  register: etx_cluster_sso_postflight
+  failed_when: false
+  when: etx_validate_cluster_sso_isolation | bool
+
+- name: Assert ETX did not break cluster default SSO
+  ansible.builtin.assert:
+    that:
+    - >-
+      {{
+        etx_cluster_sso_baseline | default('unknown') != 'healthy'
+        or (
+          etx_cluster_sso_postflight.status | default(0) == 200
+          and 'issuer' in (etx_cluster_sso_postflight.content | default(''))
+        )
+      }}
+    fail_msg: >-
+      Cluster default SSO was healthy before ETX bootstrap but is not healthy
+      after deployment. Check https://sso.{{ etx_cluster_domain_effective }}/realms/sso
+      before continuing.
+    success_msg: Cluster default SSO isolation check passed.
+  when: etx_validate_cluster_sso_isolation | bool
+
+- name: Report ETX workshop access endpoints
+  ansible.builtin.debug:
+    msg:
+    - "Keycloak: https://etx-sso.{{ etx_cluster_domain_effective }}"
+    - "ETX GitOps: https://etx-gitops-server-etx-gitops.{{ etx_cluster_domain_effective }}"
+    - "GitLab: {{ 'https://gitlab.' ~ etx_cluster_domain_effective if etx_gitlab_enabled | bool else 'disabled' }}"
+    - "Quay: {{ 'https://quay.' ~ etx_cluster_domain_effective if etx_quay_enabled | bool else 'disabled' }}"
+    - "Vault: {{ 'https://vault.' ~ etx_cluster_domain_effective if etx_vault_enabled | bool else 'disabled' }}"
+  when: etx_validate_workshop_requirements | bool

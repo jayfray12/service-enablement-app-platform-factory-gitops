@@ -1,0 +1,16 @@
+apiVersion: v2
+name: vault-etx-lab
+version: 1.0.0
+description: ETX Lab wrapper chart around the official HashiCorp Vault Helm chart
+type: application
+keywords:
+  - vault
+  - secrets
+  - hashicorp
+  - etx-lab
+maintainers:
+  - name: ETX Platform Team
+dependencies:
+  - name: vault
+    version: 0.32.0
+    repository: https://helm.releases.hashicorp.com

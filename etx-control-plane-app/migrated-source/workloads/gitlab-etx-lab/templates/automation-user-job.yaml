@@ -1,0 +1,157 @@
+{{- if .Values.instance.automationUser.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gitlab-automation-bootstrap
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: gitlab-automation-bootstrap
+    app.kubernetes.io/part-of: gitlab-etx-lab
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gitlab-automation-bootstrap
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: gitlab-automation-bootstrap
+    app.kubernetes.io/part-of: gitlab-etx-lab
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gitlab-automation-bootstrap
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: gitlab-automation-bootstrap
+    app.kubernetes.io/part-of: gitlab-etx-lab
+subjects:
+  - kind: ServiceAccount
+    name: gitlab-automation-bootstrap
+    namespace: {{ .Values.namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: gitlab-automation-bootstrap
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gitlab-automation-bootstrap
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: gitlab-automation-bootstrap
+    app.kubernetes.io/part-of: gitlab-etx-lab
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gitlab-automation-bootstrap
+        app.kubernetes.io/part-of: gitlab-etx-lab
+    spec:
+      serviceAccountName: gitlab-automation-bootstrap
+      restartPolicy: Never
+      containers:
+        - name: bootstrap
+          image: registry.access.redhat.com/ubi9/python-311:latest
+          command:
+            - /bin/bash
+            - -ec
+            - |
+              if ! command -v git >/dev/null 2>&1; then
+                if command -v microdnf >/dev/null 2>&1; then
+                  microdnf install -y git >/dev/null
+                else
+                  echo "git is required and microdnf is not available" >&2
+                  exit 1
+                fi
+              fi
+              python /scripts/ensure-user.py
+          env:
+            - name: GITLAB_URL
+              value: http://gitlab-webservice-default.{{ .Values.namespace }}.svc:8181
+            - name: AUTOMATION_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: gitlab-automation-user
+                  key: username
+            - name: AUTOMATION_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: gitlab-automation-user
+                  key: password
+            - name: AUTOMATION_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: gitlab-automation-user
+                  key: email
+            - name: AUTOMATION_DISPLAY_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: gitlab-automation-user
+                  key: displayName
+            - name: AUTOMATION_CAN_CREATE_GROUP
+              valueFrom:
+                secretKeyRef:
+                  name: gitlab-automation-user
+                  key: canCreateGroup
+            - name: PLATFORM_ADMIN_USERNAME
+              value: {{ .Values.instance.workshopAccess.platformAdmin.username | quote }}
+            - name: PLATFORM_ADMIN_PASSWORD
+              value: {{ .Values.instance.workshopAccess.platformAdmin.password | quote }}
+            - name: PLATFORM_ADMIN_EMAIL
+              value: {{ .Values.instance.workshopAccess.platformAdmin.email | quote }}
+            - name: PLATFORM_ADMIN_DISPLAY_NAME
+              value: {{ .Values.instance.workshopAccess.platformAdmin.displayName | quote }}
+            - name: PLATFORM_DEVELOPER_USERNAME
+              value: {{ .Values.instance.workshopAccess.platformDeveloper.username | quote }}
+            - name: PLATFORM_DEVELOPER_PASSWORD
+              value: {{ .Values.instance.workshopAccess.platformDeveloper.password | quote }}
+            - name: PLATFORM_DEVELOPER_EMAIL
+              value: {{ .Values.instance.workshopAccess.platformDeveloper.email | quote }}
+            - name: PLATFORM_DEVELOPER_DISPLAY_NAME
+              value: {{ .Values.instance.workshopAccess.platformDeveloper.displayName | quote }}
+            - name: SEED_REPOSITORY_ENABLED
+              value: {{ ternary "true" "false" .Values.instance.seedRepository.enabled | quote }}
+            - name: SEED_REPOSITORY_SOURCE_URL
+              value: {{ .Values.instance.seedRepository.sourceUrl | quote }}
+            - name: SEED_REPOSITORY_TARGET_GROUP
+              value: {{ .Values.instance.seedRepository.targetGroup | quote }}
+            - name: SEED_REPOSITORY_TARGET_PROJECT
+              value: {{ .Values.instance.seedRepository.targetProject | quote }}
+            - name: SEED_REPOSITORY_VISIBILITY
+              value: {{ .Values.instance.seedRepository.visibility | quote }}
+            - name: SEED_REPOSITORY_DESCRIPTION
+              value: {{ .Values.instance.seedRepository.description | quote }}
+            - name: SEED_REPOSITORY_GITHUB_TOKEN
+              value: {{ .Values.instance.seedRepository.githubToken | quote }}
+            - name: AUTOMATION_NAMESPACE
+              value: {{ .Values.namespace | quote }}
+            - name: CLUSTER_DOMAIN
+              value: {{ .Values.deployer.domain | quote }}
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: bootstrap-script
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: bootstrap-script
+          configMap:
+            name: gitlab-automation-bootstrap-script
+            defaultMode: 0755
+{{- end }}

@@ -1,0 +1,152 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gitlab-seed-script
+  namespace: {{ .Values.gitlab.namespace | default "gitlab" }}
+  labels:
+    app.kubernetes.io/name: gitlab-seed-script
+    app.kubernetes.io/part-of: etx-lab-platform
+data:
+  seed.sh: |
+    #!/bin/bash
+    set -e
+
+    GITLAB_URL="{{ .Values.gitlab.url }}"
+    GITLAB_TOKEN="${GITLAB_ROOT_TOKEN}"
+
+    echo "==================================="
+    echo "GitLab Repository Seeding"
+    echo "==================================="
+    echo "GitLab URL: $GITLAB_URL"
+    echo ""
+
+    # Function to create GitLab group
+    create_group() {
+      local group_name=$1
+      local group_path=$2
+
+      echo "Creating group: $group_name ($group_path)"
+
+      curl -k -s -X POST "$GITLAB_URL/api/v4/groups" \
+        --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+        --header "Content-Type: application/json" \
+        --data "{
+          \"name\": \"$group_name\",
+          \"path\": \"$group_path\",
+          \"visibility\": \"public\"
+        }" | grep -q "id" && echo "✅ Group created: $group_path" || echo "⚠️  Group may already exist: $group_path"
+    }
+
+    # Function to create and seed repository
+    seed_repository() {
+      local repo_name=$1
+      local source_url=$2
+      local target_group=$3
+      local visibility=$4
+      local description=$5
+
+      echo ""
+      echo "-----------------------------------"
+      echo "Seeding: $repo_name"
+      echo "Source: $source_url"
+      echo "Target: $target_group/$repo_name"
+      echo "-----------------------------------"
+
+      # Create project in GitLab
+      echo "Creating GitLab project..."
+
+      # Get group ID
+      GROUP_ID=$(curl -k -s "$GITLAB_URL/api/v4/groups/$target_group" \
+        --header "PRIVATE-TOKEN: $GITLAB_TOKEN" | \
+        grep -o '"id":[0-9]*' | head -1 | cut -d':' -f2)
+
+      if [ -z "$GROUP_ID" ]; then
+        echo "❌ Failed to get group ID for: $target_group"
+        return 1
+      fi
+
+      # Create project
+      PROJECT_RESPONSE=$(curl -k -s -X POST "$GITLAB_URL/api/v4/projects" \
+        --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+        --header "Content-Type: application/json" \
+        --data "{
+          \"name\": \"$repo_name\",
+          \"namespace_id\": $GROUP_ID,
+          \"visibility\": \"$visibility\",
+          \"description\": \"$description\",
+          \"initialize_with_readme\": false
+        }")
+
+      if echo "$PROJECT_RESPONSE" | grep -q "id"; then
+        echo "✅ Project created: $target_group/$repo_name"
+      else
+        echo "⚠️  Project may already exist: $target_group/$repo_name"
+      fi
+
+      # Clone source repository
+      echo "Cloning source repository..."
+      TEMP_DIR="/tmp/$repo_name-$$"
+      git clone --depth 1 "$source_url" "$TEMP_DIR" 2>/dev/null || {
+        echo "❌ Failed to clone: $source_url"
+        return 1
+      }
+
+      cd "$TEMP_DIR"
+
+      # Configure Git
+      git config user.email "seed@etx-lab.local"
+      git config user.name "ETX Lab Seeder"
+
+      # Push to GitLab
+      echo "Pushing to GitLab..."
+      GITLAB_REPO_URL="${GITLAB_URL/$'https://'/https://root:${GITLAB_TOKEN}@}/$target_group/$repo_name.git"
+
+      git remote remove origin
+      git remote add origin "$GITLAB_REPO_URL"
+      git push -u origin main --force 2>/dev/null || \
+      git push -u origin master --force 2>/dev/null || {
+        echo "❌ Failed to push to GitLab"
+        cd /
+        rm -rf "$TEMP_DIR"
+        return 1
+      }
+
+      cd /
+      rm -rf "$TEMP_DIR"
+      echo "✅ Repository seeded: $target_group/$repo_name"
+    }
+
+    # Wait for GitLab to be fully ready
+    echo "Waiting for GitLab API to be ready..."
+    for i in {1..30}; do
+      if curl -k -s -o /dev/null -w "%{http_code}" "$GITLAB_URL/api/v4/version" | grep -q "200\|401"; then
+        echo "✅ GitLab API is ready"
+        break
+      fi
+      echo "Waiting... ($i/30)"
+      sleep 10
+    done
+
+    # Create groups
+    {{- range .Values.repositories }}
+    {{- if .targetGroup }}
+    create_group "{{ .targetGroup | title }}" "{{ .targetGroup }}"
+    {{- end }}
+    {{- end }}
+
+    sleep 5
+
+    # Seed repositories
+    {{- range .Values.repositories }}
+    seed_repository \
+      "{{ .name }}" \
+      "{{ .sourceUrl }}" \
+      "{{ .targetGroup }}" \
+      "{{ .visibility }}" \
+      "{{ .description }}"
+    {{- end }}
+
+    echo ""
+    echo "==================================="
+    echo "✅ GitLab Seeding Complete!"
+    echo "==================================="

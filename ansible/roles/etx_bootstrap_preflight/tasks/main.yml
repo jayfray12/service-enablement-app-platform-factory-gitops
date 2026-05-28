@@ -1,0 +1,86 @@
+---
+- name: Read cluster ingress configuration
+  kubernetes.core.k8s_info:
+    api_version: config.openshift.io/v1
+    kind: Ingress
+    name: cluster
+  register: etx_ingress_config
+
+- name: Discover cluster API URL when not provided
+  ansible.builtin.command:
+    cmd: oc whoami --show-server
+  register: etx_oc_server
+  changed_when: false
+  when: etx_cluster_api_url | length == 0
+
+- name: Set discovered ETX bootstrap facts
+  ansible.builtin.set_fact:
+    etx_cluster_domain_effective: "{{ etx_cluster_domain | default(etx_ingress_config.resources[0].spec.domain, true) }}"
+    etx_cluster_api_url_effective: "{{ etx_cluster_api_url | default(etx_oc_server.stdout | default(''), true) }}"
+
+- name: Set ETX cluster GUID
+  ansible.builtin.set_fact:
+    etx_cluster_guid_effective: >-
+      {{
+        etx_cluster_guid
+        | default(etx_cluster_domain_effective | regex_replace('^apps\\.cluster-', '') | regex_replace('\\..*$', ''), true)
+      }}
+
+- name: Validate required cluster facts
+  ansible.builtin.assert:
+    that:
+    - etx_cluster_domain_effective | length > 0
+    - etx_cluster_api_url_effective | length > 0
+    - etx_cluster_guid_effective | length > 0
+    fail_msg: Unable to discover cluster domain, API URL, or GUID.
+
+- name: Validate Git repository access
+  ansible.builtin.uri:
+    url: "{{ etx_git_repo_url | regex_replace('https://github.com/', 'https://api.github.com/repos/') | regex_replace('\\.git$', '') }}"
+    method: GET
+    headers: "{{ {'Authorization': 'Bearer ' ~ etx_git_token} if etx_git_token | length > 0 else {} }}"
+    status_code:
+    - 200
+  register: etx_repo_access
+  when:
+  - etx_validate_repository_access | bool
+  - etx_git_repo_url is search('github.com')
+
+- name: Check cluster default SSO before ETX deployment
+  ansible.builtin.uri:
+    url: "https://sso.{{ etx_cluster_domain_effective }}/realms/sso/.well-known/openid-configuration"
+    method: GET
+    validate_certs: false
+    status_code:
+    - 200
+    - 404
+    return_content: true
+  register: etx_cluster_sso_preflight
+  failed_when: false
+  when: etx_validate_cluster_sso_isolation | bool
+
+- name: Record cluster default SSO baseline
+  ansible.builtin.set_fact:
+    etx_cluster_sso_baseline: >-
+      {{
+        'healthy'
+        if etx_cluster_sso_preflight.status | default(0) == 200 and 'issuer' in (etx_cluster_sso_preflight.content | default(''))
+        else 'not_found'
+        if etx_cluster_sso_preflight.status | default(0) in [0, 404]
+        else 'unknown'
+      }}
+  when: etx_validate_cluster_sso_isolation | bool
+
+- name: Generate effective OIDC secrets
+  ansible.builtin.set_fact:
+    etx_argocd_oidc_client_secret_effective: >-
+      {{
+        etx_argocd_oidc_client_secret
+        | default(lookup('ansible.builtin.password', '/dev/null length=40 chars=ascii_letters,digits'), true)
+      }}
+    etx_vault_oidc_client_secret_effective: >-
+      {{
+        etx_vault_oidc_client_secret
+        | default(lookup('ansible.builtin.password', '/dev/null length=40 chars=ascii_letters,digits'), true)
+      }}
+  no_log: true

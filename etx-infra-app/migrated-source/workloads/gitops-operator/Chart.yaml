@@ -1,0 +1,12 @@
+apiVersion: v2
+name: gitops-operator
+version: 1.0.0
+description: OpenShift GitOps (Argo CD) Operator
+type: application
+keywords:
+  - gitops
+  - argocd
+  - operator
+  - cicd
+maintainers:
+  - name: ETX Platform Team

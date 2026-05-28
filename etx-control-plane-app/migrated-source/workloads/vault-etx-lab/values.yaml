@@ -1,0 +1,73 @@
+namespace: vault
+
+deployer:
+  domain: apps.cluster-guid.sandbox.opentlc.com
+
+kubernetesAuth:
+  enabled: true
+  role: etx-lab-default
+  policy: etx-lab-secrets
+  policyRules: |
+    path "secret/data/etx-lab/*" {
+      capabilities = ["create", "read", "update", "delete", "list"]
+    }
+    path "secret/metadata/etx-lab/*" {
+      capabilities = ["list", "read", "delete"]
+    }
+
+oidcAuth:
+  enabled: true
+  discoveryUrl: https://etx-sso.apps.cluster-guid.sandbox.opentlc.com/realms/etx-lab
+  clientId: vault
+  clientSecret: changeme
+  defaultRole: etx-lab-user
+
+vault:
+  global:
+    openshift: true
+  injector:
+    enabled: false
+  csi:
+    enabled: false
+  server:
+    image:
+      repository: docker.io/hashicorp/vault
+      tag: 1.18.5
+    authDelegator:
+      enabled: true
+    route:
+      enabled: true
+      host: vault.apps.cluster-guid.sandbox.opentlc.com
+      tls:
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect
+    dataStorage:
+      enabled: true
+      size: 1Gi
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+    ha:
+      enabled: true
+      replicas: 1
+      raft:
+        enabled: true
+        setNodeId: true
+        config: |
+          ui = true
+
+          listener "tcp" {
+            tls_disable = 1
+            address = "[::]:8200"
+            cluster_address = "[::]:8201"
+          }
+
+          storage "raft" {
+            path = "/vault/data"
+          }
+
+          service_registration "kubernetes" {}

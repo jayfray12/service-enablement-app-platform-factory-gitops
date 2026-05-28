@@ -1,0 +1,12 @@
+apiVersion: v2
+name: gitlab-seed
+version: 1.0.0
+description: GitLab repository seeding job for ETX Lab
+type: application
+keywords:
+  - gitlab
+  - seeding
+  - job
+  - etx-lab
+maintainers:
+  - name: ETX Platform Team

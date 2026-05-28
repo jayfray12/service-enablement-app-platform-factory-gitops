@@ -1,0 +1,73 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ etx_infra_application_name }}
+  namespace: {{ etx_infra_application_namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: {{ etx_git_repo_url }}
+    targetRevision: {{ etx_git_revision }}
+    path: {{ etx_infra_application_path }}
+    helm:
+      values: |
+        deployer:
+          domain: {{ etx_cluster_domain_effective }}
+          apiUrl: {{ etx_cluster_api_url_effective }}
+          guid: {{ etx_cluster_guid_effective }}
+
+        platform:
+          enabled: false
+
+        etxGitops:
+          enabled: true
+          repo:
+            url: {{ etx_git_repo_url }}
+            username: git
+            password: {{ etx_git_token }}
+          sso:
+            clientSecret: {{ etx_argocd_oidc_client_secret_effective }}
+          git:
+            repoURL: {{ etx_git_repo_url }}
+            targetRevision: {{ etx_git_revision }}
+
+        keycloakOperator:
+          enabled: true
+          git:
+            repoURL: {{ etx_git_repo_url }}
+            targetRevision: {{ etx_git_revision }}
+        quayOperator:
+          enabled: {{ etx_quay_enabled | bool | lower }}
+          git:
+            repoURL: {{ etx_git_repo_url }}
+            targetRevision: {{ etx_git_revision }}
+        vaultSecretsOperator:
+          enabled: {{ etx_vault_enabled | bool | lower }}
+          git:
+            repoURL: {{ etx_git_repo_url }}
+            targetRevision: {{ etx_git_revision }}
+        webTerminalOperator:
+          enabled: {{ etx_web_terminal_enabled | bool | lower }}
+          git:
+            repoURL: {{ etx_git_repo_url }}
+            targetRevision: {{ etx_git_revision }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ etx_gitops_namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 5m
