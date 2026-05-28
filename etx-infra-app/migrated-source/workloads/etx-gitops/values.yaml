@@ -1,0 +1,16 @@
+namespace: etx-gitops
+
+deployer:
+  domain: apps.cluster-guid.sandbox.opentlc.com
+
+repo:
+  url: https://github.com/rhpds/service-enablement-app-platform-factory-gitops.git
+  username: git
+  password: ""
+
+sso:
+  clientId: argocd
+  clientSecret: ""
+  issuer: https://etx-sso.apps.cluster-guid.sandbox.opentlc.com/realms/etx-lab
+  redirectUri: https://etx-gitops-server-etx-gitops.apps.cluster-guid.sandbox.opentlc.com/auth/callback
+  logoutUrl: https://etx-sso.apps.cluster-guid.sandbox.opentlc.com/realms/etx-lab/protocol/openid-connect/logout

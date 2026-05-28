@@ -1,0 +1,51 @@
+{{- if .Values.etxGitops.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: etx-gitops-bootstrap
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: etx-gitops-bootstrap
+    app.kubernetes.io/part-of: etx-lab-bootstrap
+    demo.redhat.com/platform: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.etxGitops.git.repoURL }}
+    targetRevision: {{ .Values.etxGitops.git.targetRevision }}
+    path: {{ .Values.etxGitops.git.path }}
+    helm:
+      values: |
+        namespace: {{ .Values.etxGitops.namespace }}
+        deployer:
+          domain: {{ .Values.deployer.domain }}
+        repo:
+          url: {{ .Values.etxGitops.repo.url }}
+          username: {{ .Values.etxGitops.repo.username }}
+          password: {{ .Values.etxGitops.repo.password }}
+        sso:
+          clientId: {{ .Values.etxGitops.sso.clientId }}
+          issuer: https://etx-sso.{{ .Values.deployer.domain }}/realms/etx-lab
+          redirectUri: https://etx-gitops-server-{{ .Values.etxGitops.namespace }}.{{ .Values.deployer.domain }}/auth/callback
+          logoutUrl: https://etx-sso.{{ .Values.deployer.domain }}/realms/etx-lab/protocol/openid-connect/logout
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.etxGitops.namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

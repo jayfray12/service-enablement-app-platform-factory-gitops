@@ -1,0 +1,59 @@
+{{- if .Values.quayEtxLab.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: etx-quay
+  namespace: {{ .Values.gitops.namespace }}
+  labels:
+    app.kubernetes.io/name: etx-quay
+    app.kubernetes.io/part-of: etx-lab-platform
+    demo.redhat.com/platform: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.quayEtxLab.git.repoURL }}
+    targetRevision: {{ .Values.quayEtxLab.git.targetRevision }}
+    path: {{ .Values.quayEtxLab.git.path }}
+    helm:
+      values: |
+        namespace: {{ .Values.quayEtxLab.namespace }}
+        deployer:
+          domain: {{ .Values.deployer.domain }}
+        instance:
+          hostname: quay.{{ .Values.deployer.domain }}
+          oidc:
+            enabled: {{ .Values.quayEtxLab.instance.oidc.enabled }}
+            provider: {{ .Values.quayEtxLab.instance.oidc.provider }}
+            issuer: https://etx-sso.{{ .Values.deployer.domain }}/realms/etx-lab
+            clientId: {{ .Values.quayEtxLab.instance.oidc.clientId }}
+        superuser:
+          {{- toYaml .Values.quayEtxLab.superuser | nindent 10 }}
+        {{- with .Values.quayEtxLab.components }}
+        components:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.quayEtxLab.features }}
+        features:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.quayEtxLab.namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false  # Created by operator chart
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

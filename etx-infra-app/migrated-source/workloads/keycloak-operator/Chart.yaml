@@ -1,0 +1,13 @@
+apiVersion: v2
+name: keycloak-operator
+version: 1.0.0
+description: Red Hat Build of Keycloak Operator (RHBK)
+type: application
+keywords:
+  - keycloak
+  - rhbk
+  - sso
+  - oidc
+  - operator
+maintainers:
+  - name: ETX Platform Team

@@ -1,0 +1,263 @@
+apiVersion: k8s.keycloak.org/v2alpha1
+kind: KeycloakRealmImport
+metadata:
+  name: {{ .Values.realm.name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: etx-keycloak-realm-{{ .Values.realm.name }}
+    app.kubernetes.io/instance: etx-keycloak
+    app.kubernetes.io/part-of: etx-lab-platform
+    demo.redhat.com/platform: "true"
+spec:
+  keycloakCRName: etx-keycloak
+  realm:
+    realm: {{ .Values.realm.name }}
+    displayName: {{ .Values.realm.displayName }}
+    enabled: true
+    sslRequired: external
+    registrationAllowed: false
+    loginWithEmailAllowed: true
+    duplicateEmailsAllowed: false
+    resetPasswordAllowed: true
+    editUsernameAllowed: false
+    bruteForceProtected: true
+
+    # Users
+    users:
+    {{- range .Values.users }}
+    - username: {{ .username }}
+      enabled: true
+      emailVerified: true
+      firstName: {{ .firstName }}
+      lastName: {{ .lastName }}
+      email: {{ .username }}@example.com
+      credentials:
+      - type: password
+        value: {{ .password }}
+        temporary: false
+      {{- if .groups }}
+      groups:
+      {{- range .groups }}
+      - {{ . }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
+
+    {{- if .Values.groups }}
+    groups:
+    {{- range .Values.groups }}
+    - name: {{ .name }}
+    {{- end }}
+    {{- end }}
+
+    {{- if .Values.clientScopes.groups.enabled }}
+    clientScopes:
+    - name: {{ .Values.clientScopes.groups.name }}
+      protocol: openid-connect
+      attributes:
+        include.in.token.scope: "true"
+        display.on.consent.screen: "false"
+      protocolMappers:
+      - name: groups
+        protocol: openid-connect
+        protocolMapper: oidc-group-membership-mapper
+        consentRequired: false
+        config:
+          full.path: "false"
+          id.token.claim: "true"
+          access.token.claim: "true"
+          userinfo.token.claim: "true"
+          claim.name: groups
+    {{- end }}
+
+    # OIDC Clients
+    clients:
+    {{- if .Values.clients.gitlab.enabled }}
+    - clientId: {{ .Values.clients.gitlab.clientId }}
+      enabled: true
+      protocol: openid-connect
+      publicClient: false
+      standardFlowEnabled: true
+      implicitFlowEnabled: false
+      directAccessGrantsEnabled: true
+      serviceAccountsEnabled: false
+      authorizationServicesEnabled: false
+      secret: etx-lab-workshop-gitlab-secret
+      redirectUris:
+      {{- range .Values.clients.gitlab.redirectUris }}
+      - {{ . }}
+      {{- end }}
+      webOrigins:
+      - "*"
+      defaultClientScopes:
+      - profile
+      - email
+      - roles
+      - web-origins
+      optionalClientScopes:
+      - address
+      - phone
+      - offline_access
+      - microprofile-jwt
+      protocolMappers:
+      - name: preferred_username
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-property-mapper
+        consentRequired: false
+        config:
+          user.attribute: username
+          claim.name: preferred_username
+          jsonType.label: String
+          id.token.claim: "true"
+          access.token.claim: "true"
+          userinfo.token.claim: "true"
+      - name: email
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-property-mapper
+        consentRequired: false
+        config:
+          user.attribute: email
+          claim.name: email
+          jsonType.label: String
+          id.token.claim: "true"
+          access.token.claim: "true"
+          userinfo.token.claim: "true"
+      - name: email_verified
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-property-mapper
+        consentRequired: false
+        config:
+          user.attribute: emailVerified
+          claim.name: email_verified
+          jsonType.label: boolean
+          id.token.claim: "true"
+          access.token.claim: "true"
+          userinfo.token.claim: "true"
+    {{- end }}
+    {{- if .Values.clients.argocd.enabled }}
+    - clientId: {{ .Values.clients.argocd.clientId }}
+      enabled: true
+      protocol: openid-connect
+      publicClient: false
+      standardFlowEnabled: true
+      implicitFlowEnabled: false
+      directAccessGrantsEnabled: false
+      serviceAccountsEnabled: false
+      authorizationServicesEnabled: false
+      secret: {{ .Values.clients.argocd.clientSecret }}
+      redirectUris:
+      {{- range .Values.clients.argocd.redirectUris }}
+      - {{ . }}
+      {{- end }}
+      webOrigins:
+      {{- if .Values.clients.argocd.webOrigins }}
+      {{- range .Values.clients.argocd.webOrigins }}
+      - {{ . }}
+      {{- end }}
+      {{- else }}
+      - https://openshift-gitops-server-openshift-gitops.{{ .Values.deployer.domain }}
+      {{- end }}
+      defaultClientScopes:
+      - profile
+      - email
+      - roles
+      {{- if .Values.clientScopes.groups.enabled }}
+      - {{ .Values.clientScopes.groups.name }}
+      {{- end }}
+      optionalClientScopes:
+      - address
+      - phone
+      - offline_access
+      - microprofile-jwt
+      protocolMappers:
+      - name: preferred_username
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-property-mapper
+        consentRequired: false
+        config:
+          user.attribute: username
+          claim.name: preferred_username
+          jsonType.label: String
+          id.token.claim: "true"
+          access.token.claim: "true"
+          userinfo.token.claim: "true"
+    {{- end }}
+    {{- if .Values.clients.quay.enabled }}
+    - clientId: {{ .Values.clients.quay.clientId }}
+      enabled: true
+      protocol: openid-connect
+      publicClient: false
+      standardFlowEnabled: true
+      implicitFlowEnabled: false
+      directAccessGrantsEnabled: true
+      serviceAccountsEnabled: false
+      authorizationServicesEnabled: false
+      secret: etx-lab-workshop-quay-secret
+      redirectUris:
+      {{- range .Values.clients.quay.redirectUris }}
+      - {{ . }}
+      {{- end }}
+      webOrigins:
+      - "*"
+      defaultClientScopes:
+      - profile
+      - email
+      - roles
+      - web-origins
+      optionalClientScopes:
+      - address
+      - phone
+      - offline_access
+      - microprofile-jwt
+      protocolMappers:
+      - name: preferred_username
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-property-mapper
+        consentRequired: false
+        config:
+          user.attribute: username
+          claim.name: preferred_username
+          jsonType.label: String
+          id.token.claim: "true"
+          access.token.claim: "true"
+          userinfo.token.claim: "true"
+    {{- end }}
+    {{- if .Values.clients.vault.enabled }}
+    - clientId: {{ .Values.clients.vault.clientId }}
+      enabled: true
+      protocol: openid-connect
+      publicClient: false
+      standardFlowEnabled: true
+      implicitFlowEnabled: false
+      directAccessGrantsEnabled: false
+      serviceAccountsEnabled: false
+      authorizationServicesEnabled: false
+      secret: {{ .Values.clients.vault.clientSecret }}
+      redirectUris:
+      {{- range .Values.clients.vault.redirectUris }}
+      - {{ . }}
+      {{- end }}
+      webOrigins:
+      - https://vault.{{ .Values.deployer.domain }}
+      defaultClientScopes:
+      - profile
+      - email
+      - roles
+      optionalClientScopes:
+      - address
+      - phone
+      - offline_access
+      - microprofile-jwt
+      protocolMappers:
+      - name: preferred_username
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-property-mapper
+        consentRequired: false
+        config:
+          user.attribute: username
+          claim.name: preferred_username
+          jsonType.label: String
+          id.token.claim: "true"
+          access.token.claim: "true"
+          userinfo.token.claim: "true"
+    {{- end }}

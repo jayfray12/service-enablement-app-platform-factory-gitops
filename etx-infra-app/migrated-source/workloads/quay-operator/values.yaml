@@ -1,0 +1,22 @@
+# etx-infra-app/migrated-source/workloads/quay-operator/values.yaml
+#
+# Red Hat Quay Operator Configuration
+#
+# This chart deploys the Quay operator for enterprise container registry.
+
+# Namespace where operator and Quay instances will run
+namespace: quay
+
+# Operator Subscription settings
+subscription:
+  channel: stable-3.13
+  name: quay-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic
+
+# OperatorGroup configuration
+operatorGroup:
+  create: true
+  targetNamespaces:
+    - quay

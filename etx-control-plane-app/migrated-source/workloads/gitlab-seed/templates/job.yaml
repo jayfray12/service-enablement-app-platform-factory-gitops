@@ -1,0 +1,49 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gitlab-seed
+  namespace: {{ .Values.gitlab.namespace | default "gitlab" }}
+  labels:
+    app.kubernetes.io/name: gitlab-seed
+    app.kubernetes.io/part-of: etx-lab-platform
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: gitlab-seed
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: gitlab-seed
+      containers:
+      - name: seed
+        image: registry.redhat.io/ubi9/ubi:latest
+        command:
+        - /bin/bash
+        - /scripts/seed.sh
+        env:
+        - name: GITLAB_ROOT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: gitlab-gitlab-initial-root-password
+              key: password
+              optional: false
+        volumeMounts:
+        - name: seed-script
+          mountPath: /scripts
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: seed-script
+        configMap:
+          name: gitlab-seed-script
+          defaultMode: 0755

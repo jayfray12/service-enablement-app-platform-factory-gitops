@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: etx-keycloak-postgres
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: etx-keycloak-postgres
+    app.kubernetes.io/instance: etx-keycloak
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: etx-lab-platform
+spec:
+  serviceName: etx-keycloak-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: etx-keycloak-postgres
+      app.kubernetes.io/instance: etx-keycloak
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: etx-keycloak-postgres
+        app.kubernetes.io/instance: etx-keycloak
+        app.kubernetes.io/component: database
+    spec:
+      containers:
+      - name: postgres
+        image: registry.redhat.io/rhel9/postgresql-15:latest
+        env:
+        - name: POSTGRESQL_USER
+          value: keycloak
+        - name: POSTGRESQL_PASSWORD
+          value: keycloak
+        - name: POSTGRESQL_DATABASE
+          value: keycloak
+        ports:
+        - containerPort: 5432
+          name: postgres
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/pgsql/data
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-data
+      labels:
+        app.kubernetes.io/name: etx-keycloak-postgres
+        app.kubernetes.io/instance: etx-keycloak
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: etx-keycloak-postgres
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: etx-keycloak-postgres
+    app.kubernetes.io/instance: etx-keycloak
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: etx-lab-platform
+spec:
+  selector:
+    app.kubernetes.io/name: etx-keycloak-postgres
+    app.kubernetes.io/instance: etx-keycloak
+  ports:
+  - port: 5432
+    targetPort: 5432
+    name: postgres

@@ -1,0 +1,478 @@
+{{- if .Values.instance.automationUser.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gitlab-automation-bootstrap-script
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: gitlab-automation-bootstrap-script
+    app.kubernetes.io/part-of: gitlab-etx-lab
+data:
+  ensure-user.py: |
+    #!/usr/bin/env python3
+    import base64
+    import json
+    import os
+    import shutil
+    import ssl
+    import subprocess
+    import sys
+    import tempfile
+    import time
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    base_url = os.environ["GITLAB_URL"].rstrip("/")
+    username = os.environ["AUTOMATION_USERNAME"]
+    password = os.environ["AUTOMATION_PASSWORD"]
+    email = os.environ["AUTOMATION_EMAIL"]
+    display_name = os.environ["AUTOMATION_DISPLAY_NAME"]
+    can_create_group = os.environ["AUTOMATION_CAN_CREATE_GROUP"].lower() == "true"
+    platform_admin_username = os.environ["PLATFORM_ADMIN_USERNAME"]
+    platform_admin_password = os.environ["PLATFORM_ADMIN_PASSWORD"]
+    platform_admin_email = os.environ["PLATFORM_ADMIN_EMAIL"]
+    platform_admin_display_name = os.environ["PLATFORM_ADMIN_DISPLAY_NAME"]
+    platform_developer_username = os.environ["PLATFORM_DEVELOPER_USERNAME"]
+    platform_developer_password = os.environ["PLATFORM_DEVELOPER_PASSWORD"]
+    platform_developer_email = os.environ["PLATFORM_DEVELOPER_EMAIL"]
+    platform_developer_display_name = os.environ["PLATFORM_DEVELOPER_DISPLAY_NAME"]
+    seed_repository_enabled = os.environ["SEED_REPOSITORY_ENABLED"].lower() == "true"
+    seed_repository_source_url = os.environ["SEED_REPOSITORY_SOURCE_URL"]
+    seed_repository_target_group = os.environ["SEED_REPOSITORY_TARGET_GROUP"]
+    seed_repository_target_project = os.environ["SEED_REPOSITORY_TARGET_PROJECT"]
+    seed_repository_visibility = os.environ["SEED_REPOSITORY_VISIBILITY"]
+    seed_repository_description = os.environ["SEED_REPOSITORY_DESCRIPTION"]
+    seed_repository_github_token = os.environ["SEED_REPOSITORY_GITHUB_TOKEN"]
+    namespace = os.environ["AUTOMATION_NAMESPACE"]
+    kubernetes_host = os.environ["KUBERNETES_SERVICE_HOST"]
+    kubernetes_port = os.environ["KUBERNETES_SERVICE_PORT_HTTPS"]
+    kubernetes_api = f"https://{kubernetes_host}:{kubernetes_port}"
+    service_account_token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    service_account_ca_path = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+    owner_access_level = 50
+    developer_access_level = 30
+
+    def log(message):
+        print(f"[gitlab-automation-bootstrap] {message}", flush=True)
+
+    def request(method, path, data=None, headers=None):
+        request_headers = headers.copy() if headers else {}
+        body = None
+        if data is not None:
+            body = urllib.parse.urlencode(data).encode("utf-8")
+            request_headers["Content-Type"] = "application/x-www-form-urlencoded"
+        req = urllib.request.Request(f"{base_url}{path}", method=method, headers=request_headers)
+        with urllib.request.urlopen(req, body, timeout=30) as response:
+            raw = response.read().decode("utf-8")
+            return response.status, (json.loads(raw) if raw else None)
+
+    def kubernetes_request(path):
+        with open(service_account_token_path, "r", encoding="utf-8") as handle:
+            token = handle.read().strip()
+        request_headers = {"Authorization": f"Bearer {token}"}
+        req = urllib.request.Request(f"{kubernetes_api}{path}", method="GET", headers=request_headers)
+        ssl_context = ssl.create_default_context(cafile=service_account_ca_path)
+        with urllib.request.urlopen(req, context=ssl_context, timeout=30) as response:
+            raw = response.read().decode("utf-8")
+            return response.status, (json.loads(raw) if raw else None)
+
+    def wait_for_root_password():
+        secret_name = "gitlab-gitlab-initial-root-password"
+        for attempt in range(1, 37):
+            try:
+                _, payload = kubernetes_request(f"/api/v1/namespaces/{namespace}/secrets/{secret_name}")
+                encoded = ((payload or {}).get("data") or {}).get("password")
+                if encoded:
+                    log("GitLab initial root password secret is available.")
+                    return base64.b64decode(encoded).decode("utf-8")
+            except urllib.error.HTTPError as exc:
+                if exc.code != 404:
+                    response = exc.read().decode("utf-8", errors="ignore")
+                    log(f"Root password secret lookup failed ({attempt}/36): HTTP {exc.code} {response}")
+            except Exception as exc:
+                log(f"Root password secret lookup failed ({attempt}/36): {exc}")
+            log(f"Waiting for GitLab initial root password secret ({attempt}/36)...")
+            time.sleep(5)
+        raise RuntimeError("GitLab initial root password secret did not appear within 180 seconds")
+
+    def get_root_access_token(root_password):
+        for attempt in range(1, 73):
+            try:
+                _, payload = request("POST", "/oauth/token", data={
+                    "grant_type": "password",
+                    "username": "root",
+                    "password": root_password,
+                })
+                token = payload.get("access_token") if payload else None
+                if token:
+                    log("Obtained GitLab root access token.")
+                    return token
+            except urllib.error.HTTPError as exc:
+                response = exc.read().decode("utf-8", errors="ignore")
+                log(f"Waiting for GitLab root token endpoint ({attempt}/72): HTTP {exc.code} {response}")
+            except Exception as exc:
+                log(f"Waiting for GitLab root token endpoint ({attempt}/72): {exc}")
+            time.sleep(5)
+        raise RuntimeError("Failed to obtain GitLab root access token within 360 seconds")
+
+    def authed_request(method, path, token, data=None):
+        return request(method, path, data=data, headers={"Authorization": f"Bearer {token}"})
+
+    def authed_request_allow_status(method, path, token, data=None, allowed_statuses=None):
+        try:
+            return authed_request(method, path, token, data=data)
+        except urllib.error.HTTPError as exc:
+            if allowed_statuses and exc.code in allowed_statuses:
+                raw = exc.read().decode("utf-8", errors="ignore")
+                payload = json.loads(raw) if raw else None
+                return exc.code, payload
+            raise
+
+    def get_user(token):
+        _, payload = authed_request("GET", f"/api/v4/users?username={urllib.parse.quote(username)}", token)
+        return payload[0] if payload else None
+
+    def get_user_by_username(token, requested_username):
+        _, payload = authed_request("GET", f"/api/v4/users?username={urllib.parse.quote(requested_username)}", token)
+        return payload[0] if payload else None
+
+    def ensure_user(token):
+        existing = get_user(token)
+        if existing is None:
+            log(f"Creating local GitLab automation user '{username}'.")
+            _, created = authed_request("POST", "/api/v4/users", token, data={
+                "email": email,
+                "username": username,
+                "name": display_name,
+                "password": password,
+                "skip_confirmation": "true",
+                "projects_limit": "0",
+                "can_create_group": "true" if can_create_group else "false",
+                "external": "false",
+            })
+            if not created or created.get("username") != username:
+                raise RuntimeError(f"Unexpected create-user response: {created}")
+            log("GitLab automation user created.")
+            return created
+
+        log(f"GitLab automation user '{username}' already exists.")
+        return existing
+
+    def ensure_named_user(token, requested_username, requested_password, requested_email, requested_display_name):
+        existing = get_user_by_username(token, requested_username)
+        if existing is None:
+            log(f"Creating GitLab workshop user '{requested_username}'.")
+            _, created = authed_request("POST", "/api/v4/users", token, data={
+                "email": requested_email,
+                "username": requested_username,
+                "name": requested_display_name,
+                "password": requested_password,
+                "skip_confirmation": "true",
+                "projects_limit": "0",
+                "can_create_group": "false",
+                "external": "false",
+            })
+            if not created or created.get("username") != requested_username:
+                raise RuntimeError(f"Unexpected create-user response for {requested_username}: {created}")
+            log(f"GitLab workshop user '{requested_username}' created.")
+            return created
+
+        log(f"GitLab workshop user '{requested_username}' already exists.")
+        return existing
+
+    def verify_automation_login():
+        for attempt in range(1, 13):
+            try:
+                _, payload = request("POST", "/oauth/token", data={
+                    "grant_type": "password",
+                    "username": username,
+                    "password": password,
+                })
+                token = payload.get("access_token") if payload else None
+                if token:
+                    log("GitLab automation user login verified.")
+                    return token
+            except urllib.error.HTTPError as exc:
+                response = exc.read().decode("utf-8", errors="ignore")
+                log(f"Automation user login verification failed ({attempt}/12): HTTP {exc.code} {response}")
+            except Exception as exc:
+                log(f"Automation user login verification failed ({attempt}/12): {exc}")
+            time.sleep(5)
+        raise RuntimeError("GitLab automation user could not authenticate within 60 seconds")
+
+    def get_group(token, group_path):
+        group_path_encoded = urllib.parse.quote(group_path, safe="")
+        status, payload = authed_request_allow_status("GET", f"/api/v4/groups/{group_path_encoded}", token, allowed_statuses={404})
+        return payload if status == 200 else None
+
+    def ensure_group(token):
+        existing = get_group(token, seed_repository_target_group)
+        if existing is not None:
+            log(f"GitLab group '{seed_repository_target_group}' already exists.")
+            return existing["id"]
+
+        if not can_create_group:
+            raise RuntimeError(f"Automation user cannot create missing group '{seed_repository_target_group}'")
+
+        log(f"Creating GitLab group '{seed_repository_target_group}'.")
+        _, created = authed_request("POST", "/api/v4/groups", token, data={
+            "name": seed_repository_target_group,
+            "path": seed_repository_target_group,
+            "visibility": seed_repository_visibility,
+        })
+        if not created or not created.get("id"):
+            raise RuntimeError(f"Unexpected create-group response: {created}")
+        log(f"GitLab group '{seed_repository_target_group}' created.")
+        return created["id"]
+
+    def get_group_member(token, group_id, user_id):
+        status, payload = authed_request_allow_status(
+            "GET",
+            f"/api/v4/groups/{group_id}/members/{user_id}",
+            token,
+            allowed_statuses={404},
+        )
+        return payload if status == 200 else None
+
+    def ensure_group_owner(token, group_id, user_id):
+        existing = get_group_member(token, group_id, user_id)
+        if existing is not None and int(existing.get("access_level", 0)) >= 50:
+            log(f"GitLab automation user '{username}' already owns group '{seed_repository_target_group}'.")
+            return
+
+        if existing is None:
+            log(f"Adding GitLab automation user '{username}' as owner of group '{seed_repository_target_group}'.")
+            _, created = authed_request("POST", f"/api/v4/groups/{group_id}/members", token, data={
+                "user_id": str(user_id),
+                "access_level": "50",
+            })
+            if not created or int(created.get("access_level", 0)) < 50:
+                raise RuntimeError(f"Unexpected create-group-member response: {created}")
+            return
+
+        log(f"Promoting GitLab automation user '{username}' to owner of group '{seed_repository_target_group}'.")
+        _, updated = authed_request("PUT", f"/api/v4/groups/{group_id}/members/{user_id}", token, data={
+            "access_level": "50",
+        })
+        if not updated or int(updated.get("access_level", 0)) < 50:
+            raise RuntimeError(f"Unexpected update-group-member response: {updated}")
+
+    def ensure_group_member_access(token, group_id, user_id, requested_username, access_level):
+        existing = get_group_member(token, group_id, user_id)
+        if existing is not None and int(existing.get("access_level", 0)) >= access_level:
+            log(f"GitLab user '{requested_username}' already has group access level {existing.get('access_level')} on '{seed_repository_target_group}'.")
+            return
+
+        if existing is None:
+            log(f"Adding GitLab user '{requested_username}' to group '{seed_repository_target_group}' with access level {access_level}.")
+            _, created = authed_request("POST", f"/api/v4/groups/{group_id}/members", token, data={
+                "user_id": str(user_id),
+                "access_level": str(access_level),
+            })
+            if not created or int(created.get("access_level", 0)) < access_level:
+                raise RuntimeError(f"Unexpected create-group-member response for {requested_username}: {created}")
+            return
+
+        log(f"Updating GitLab user '{requested_username}' group access to level {access_level} on '{seed_repository_target_group}'.")
+        _, updated = authed_request("PUT", f"/api/v4/groups/{group_id}/members/{user_id}", token, data={
+            "access_level": str(access_level),
+        })
+        if not updated or int(updated.get("access_level", 0)) < access_level:
+            raise RuntimeError(f"Unexpected update-group-member response for {requested_username}: {updated}")
+
+    def get_project(token):
+        project_path = f"{seed_repository_target_group}/{seed_repository_target_project}"
+        project_path_encoded = urllib.parse.quote(project_path, safe="")
+        status, payload = authed_request_allow_status("GET", f"/api/v4/projects/{project_path_encoded}", token, allowed_statuses={404})
+        return payload if status == 200 else None
+
+    def get_project_member(token, project_id, user_id):
+        status, payload = authed_request_allow_status(
+            "GET",
+            f"/api/v4/projects/{project_id}/members/all/{user_id}",
+            token,
+            allowed_statuses={404},
+        )
+        return payload if status == 200 else None
+
+    def ensure_project_member_access(token, project_id, user_id, requested_username, access_level):
+        existing = get_project_member(token, project_id, user_id)
+        if existing is not None and int(existing.get("access_level", 0)) >= access_level:
+            log(
+                f"GitLab user '{requested_username}' already has project access level "
+                f"{existing.get('access_level')} on '{seed_repository_target_group}/{seed_repository_target_project}'."
+            )
+            return
+
+        if existing is None:
+            log(
+                f"Adding GitLab user '{requested_username}' to project "
+                f"'{seed_repository_target_group}/{seed_repository_target_project}' with access level {access_level}."
+            )
+            _, created = authed_request("POST", f"/api/v4/projects/{project_id}/members", token, data={
+                "user_id": str(user_id),
+                "access_level": str(access_level),
+            })
+            if not created or int(created.get("access_level", 0)) < access_level:
+                raise RuntimeError(f"Unexpected create-project-member response for {requested_username}: {created}")
+            return
+
+        log(
+            f"Updating GitLab user '{requested_username}' project access to level {access_level} on "
+            f"'{seed_repository_target_group}/{seed_repository_target_project}'."
+        )
+        _, updated = authed_request("PUT", f"/api/v4/projects/{project_id}/members/{user_id}", token, data={
+            "access_level": str(access_level),
+        })
+        if not updated or int(updated.get("access_level", 0)) < access_level:
+            raise RuntimeError(f"Unexpected update-project-member response for {requested_username}: {updated}")
+
+    def build_github_clone_url():
+        if not seed_repository_github_token or "github.com/" not in seed_repository_source_url:
+            return seed_repository_source_url
+        return seed_repository_source_url.replace(
+            "https://github.com/",
+            f"https://x-access-token:{urllib.parse.quote(seed_repository_github_token, safe='')}@github.com/",
+            1,
+        )
+
+    def run_command(command, cwd=None):
+        result = subprocess.run(
+            command,
+            cwd=cwd,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Command failed ({result.returncode}): {' '.join(command)}\n"
+                f"stdout:\n{result.stdout}\n"
+                f"stderr:\n{result.stderr}"
+            )
+
+    def mirror_repository_to_gitlab(project):
+        git_binary = shutil.which("git")
+        if not git_binary:
+            raise RuntimeError("git binary is not available in the automation job container")
+
+        source_url = build_github_clone_url()
+        username_quoted = urllib.parse.quote(username, safe="")
+        password_quoted = urllib.parse.quote(password, safe="")
+        target_url = (project or {}).get("http_url_to_repo")
+        if not target_url:
+            raise RuntimeError(f"Project payload does not include http_url_to_repo: {project}")
+        target_url = target_url.replace(
+            "https://",
+            f"https://{username_quoted}:{password_quoted}@",
+            1,
+        )
+
+        with tempfile.TemporaryDirectory(prefix="gitlab-seed-") as temp_dir:
+            mirror_dir = os.path.join(temp_dir, "source.git")
+            log(f"Cloning source repository '{seed_repository_source_url}'.")
+            run_command([git_binary, "clone", "--mirror", source_url, mirror_dir])
+            log(f"Pushing mirrored repository into '{project['path_with_namespace']}'.")
+            run_command([git_binary, "-C", mirror_dir, "push", "--mirror", target_url])
+
+    def ensure_seed_repository(token):
+        if not seed_repository_enabled:
+            return None
+
+        existing = get_project(token)
+        if existing is not None:
+            if existing.get("empty_repo"):
+                log(
+                    f"GitLab repository '{seed_repository_target_group}/{seed_repository_target_project}' exists but is empty. "
+                    "Seeding repository contents."
+                )
+                mirror_repository_to_gitlab(existing)
+                return existing
+            log(f"GitLab repository '{seed_repository_target_group}/{seed_repository_target_project}' already exists.")
+            return existing
+
+        namespace_id = ensure_group(token)
+        log(f"Creating empty GitLab repository '{seed_repository_target_group}/{seed_repository_target_project}'.")
+        _, created = authed_request("POST", "/api/v4/projects", token, data={
+            "name": seed_repository_target_project,
+            "path": seed_repository_target_project,
+            "namespace_id": str(namespace_id),
+            "visibility": seed_repository_visibility,
+            "description": seed_repository_description,
+        })
+        if not created or not created.get("id"):
+            raise RuntimeError(f"Unexpected create-project response: {created}")
+        mirror_repository_to_gitlab(created)
+        return created
+
+    def configure_outbound_requests(token):
+        """Configure GitLab to allow webhooks to EventListener routes in cluster domain."""
+        log("Configuring GitLab outbound requests to allow webhooks to EventListener routes.")
+        try:
+            cluster_domain = os.environ.get("CLUSTER_DOMAIN", "")
+            if cluster_domain:
+                log(f"Adding cluster domain to outbound requests whitelist: *.{cluster_domain}")
+                _, settings = authed_request("PUT", "/api/v4/application/settings", token, data={
+                    "allow_local_requests_from_web_hooks_and_services": "true",
+                    "outbound_local_requests_whitelist": [f"*.{cluster_domain}"],
+                })
+            else:
+                log("CLUSTER_DOMAIN not set, enabling all local requests from webhooks and services.")
+                _, settings = authed_request("PUT", "/api/v4/application/settings", token, data={
+                    "allow_local_requests_from_web_hooks_and_services": "true",
+                })
+            log("GitLab outbound requests configured successfully for EventListener webhooks.")
+        except Exception as exc:
+            log(f"Warning: Failed to configure outbound requests: {exc}")
+            log("Manual configuration may be needed: Admin > Settings > Network > Outbound requests")
+
+    def main():
+        root_password = wait_for_root_password()
+        token = get_root_access_token(root_password)
+        configure_outbound_requests(token)
+        user = ensure_user(token)
+        if not user or not user.get("id"):
+            raise RuntimeError("GitLab automation user lookup did not return an id")
+        group_id = ensure_group(token)
+        ensure_group_owner(token, group_id, user["id"])
+        platform_admin = ensure_named_user(
+            token,
+            platform_admin_username,
+            platform_admin_password,
+            platform_admin_email,
+            platform_admin_display_name,
+        )
+        platform_developer = ensure_named_user(
+            token,
+            platform_developer_username,
+            platform_developer_password,
+            platform_developer_email,
+            platform_developer_display_name,
+        )
+        ensure_group_member_access(
+            token,
+            group_id,
+            platform_admin["id"],
+            platform_admin_username,
+            owner_access_level,
+        )
+        automation_token = verify_automation_login()
+        project = ensure_seed_repository(automation_token)
+        if project and project.get("id"):
+            ensure_project_member_access(
+                token,
+                project["id"],
+                platform_developer["id"],
+                platform_developer_username,
+                developer_access_level,
+            )
+        log("GitLab automation bootstrap completed.")
+
+    if __name__ == "__main__":
+        try:
+            main()
+        except Exception as exc:
+            log(str(exc))
+            sys.exit(1)
+{{- end }}

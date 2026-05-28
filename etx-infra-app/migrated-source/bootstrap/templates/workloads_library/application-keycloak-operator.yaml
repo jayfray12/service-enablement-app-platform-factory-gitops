@@ -1,0 +1,42 @@
+{{- if .Values.keycloakOperator.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keycloak-operator
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: keycloak-operator
+    app.kubernetes.io/part-of: etx-lab-infra
+    demo.redhat.com/infra: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: infra
+  source:
+    repoURL: {{ .Values.keycloakOperator.git.repoURL }}
+    targetRevision: {{ .Values.keycloakOperator.git.targetRevision }}
+    path: {{ .Values.keycloakOperator.git.path }}
+    helm:
+      values: |
+        namespace: {{ .Values.keycloakOperator.namespace }}
+        subscription:
+          channel: {{ .Values.keycloakOperator.channel }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.keycloakOperator.namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+{{- end }}

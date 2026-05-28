@@ -1,0 +1,12 @@
+apiVersion: v2
+name: quay-etx-lab
+version: 1.0.0
+description: Red Hat Quay instance for ETX Lab
+type: application
+keywords:
+  - quay
+  - registry
+  - container
+  - etx-lab
+maintainers:
+  - name: ETX Platform Team

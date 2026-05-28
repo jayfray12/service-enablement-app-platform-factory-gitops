@@ -1,0 +1,11 @@
+apiVersion: v2
+name: multi-cluster-setup
+version: 1.0.0
+description: Multi-cluster namespace setup for ETX Lab
+type: application
+keywords:
+  - multi-cluster
+  - namespaces
+  - etx-lab
+maintainers:
+  - name: ETX Platform Team

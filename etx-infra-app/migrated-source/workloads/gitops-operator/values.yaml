@@ -1,0 +1,23 @@
+# etx-infra-app/migrated-source/workloads/gitops-operator/values.yaml
+#
+# OpenShift GitOps Operator Configuration
+#
+# This chart deploys the OpenShift GitOps operator.
+# Note: This is the infrastructure GitOps instance.
+# Students deploy their own ArgoCD instance in Lab 1.
+
+# Namespace where operator runs
+namespace: openshift-gitops
+
+# Operator Subscription settings
+subscription:
+  channel: latest
+  name: openshift-gitops-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic
+
+# OperatorGroup configuration
+# GitOps operator is cluster-scoped, so no OperatorGroup needed
+operatorGroup:
+  create: false

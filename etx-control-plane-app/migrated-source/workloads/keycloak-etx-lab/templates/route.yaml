@@ -1,0 +1,21 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: etx-keycloak
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: etx-keycloak
+    app.kubernetes.io/instance: etx-keycloak
+    app.kubernetes.io/part-of: etx-lab-platform
+  annotations:
+    description: "ETX Lab Keycloak route - uses etx-sso hostname (isolated from cluster's sso)"
+spec:
+  host: {{ .Values.instance.hostname }}
+  to:
+    kind: Service
+    name: etx-keycloak-service
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  port:
+    targetPort: http

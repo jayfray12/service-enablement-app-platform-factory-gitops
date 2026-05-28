@@ -1,0 +1,17 @@
+# etx-control-plane-app/migrated-source/workloads/multi-cluster-setup/values.yaml
+#
+# Multi-Cluster Setup Configuration
+#
+# This chart creates the primary cluster application namespace.
+# Secondary environment namespaces are created by scripts/enroll-secondary-cluster.sh.
+
+primaryCluster:
+  namespaces:
+    - etx-app-dev
+
+secondaryCluster:
+  enabled: false
+  apiUrl: ""
+  namespaces:
+    - etx-app-staging
+    - etx-app-prod

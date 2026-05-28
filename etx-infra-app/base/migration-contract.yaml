@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: etx-infra-migration-contract
+  namespace: openshift-gitops
+data:
+  layer: infra
+  source: etx_app_platform_bootstrap
+  status: staging

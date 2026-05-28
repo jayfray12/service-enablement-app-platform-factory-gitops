@@ -1,0 +1,29 @@
+# etx-infra-app/migrated-source/workloads/web-terminal-operator/values.yaml
+#
+# OpenShift Web Terminal Operator Configuration
+#
+# This chart deploys the Web Terminal Operator to provide browser-based
+# terminal access to the OpenShift cluster with pre-installed CLI tools.
+#
+# PRE-INSTALLED TOOLS:
+#   - oc, kubectl, kustomize
+#   - helm, tekton, knative
+#   - git, jq, vim, nano
+#   - submariner, kubevirt, rhoas
+#
+# FEATURES:
+#   - Auto-authenticated as current OpenShift user
+#   - No local CLI installation required
+#   - Perfect for workshops and training environments
+
+# Namespace where operator will run
+# Note: Web Terminal instances run in user workspaces (DevWorkspace CRDs)
+namespace: openshift-operators
+
+# Operator Subscription settings
+subscription:
+  channel: fast
+  name: web-terminal
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic

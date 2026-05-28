@@ -1,0 +1,12 @@
+apiVersion: v2
+name: etx-lab-platform-bootstrap
+version: 1.0.0
+description: ETX Lab Workshop Platform Bootstrap (Configurations)
+type: application
+keywords:
+  - etx-lab
+  - platform
+  - workshop
+  - gitops
+maintainers:
+  - name: ETX Platform Team

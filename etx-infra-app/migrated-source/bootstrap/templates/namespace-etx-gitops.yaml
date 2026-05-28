@@ -1,0 +1,12 @@
+{{- if .Values.etxGitops.enabled }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.etxGitops.namespace }}
+  labels:
+    app.kubernetes.io/name: etx-gitops
+    app.kubernetes.io/part-of: etx-lab-bootstrap
+    demo.redhat.com/platform: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+{{- end }}

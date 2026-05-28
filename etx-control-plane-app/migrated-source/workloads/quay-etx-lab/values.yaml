@@ -1,0 +1,24 @@
+# etx-control-plane-app/migrated-source/workloads/quay-etx-lab/values.yaml
+#
+# Quay ETX Lab Instance Configuration
+#
+# This chart deploys Quay registry via QuayRegistry CR.
+# Configured with Keycloak OIDC authentication.
+
+namespace: quay
+
+deployer:
+  domain: apps.cluster-guid.sandbox.opentlc.com
+
+instance:
+  hostname: quay
+  oidc:
+    enabled: true
+    provider: keycloak
+    issuer: https://etx-sso.apps.cluster-guid.sandbox.opentlc.com/realms/etx-lab
+    clientId: quay
+
+superuser:
+  username: quayadmin
+  password: openshift
+  email: admin@example.com

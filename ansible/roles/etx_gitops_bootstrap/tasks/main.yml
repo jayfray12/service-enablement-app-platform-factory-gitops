@@ -1,0 +1,77 @@
+---
+- name: Install OpenShift GitOps operator when explicitly requested
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: Subscription
+      metadata:
+        name: openshift-gitops-operator
+        namespace: openshift-operators
+      spec:
+        channel: "{{ etx_gitops_operator_channel }}"
+        name: openshift-gitops-operator
+        source: redhat-operators
+        sourceNamespace: openshift-marketplace
+        installPlanApproval: Automatic
+        config:
+          env:
+          - name: ARGOCD_CLUSTER_CONFIG_NAMESPACES
+            value: "openshift-gitops"
+  when: etx_manage_gitops_operator | bool
+
+- name: Wait for base OpenShift GitOps Argo CD
+  kubernetes.core.k8s_info:
+    api_version: argoproj.io/v1beta1
+    kind: ArgoCD
+    namespace: "{{ etx_gitops_namespace }}"
+    name: openshift-gitops
+  register: etx_base_argocd
+  retries: "{{ etx_base_argocd_wait_retries }}"
+  delay: "{{ etx_base_argocd_wait_delay }}"
+  until:
+  - etx_base_argocd.resources | length > 0
+  - etx_base_argocd.resources[0].status.phase | default('') == 'Available'
+  when: etx_wait_for_base_argocd | bool
+
+- name: Patch base Argo CD for ETX health checks and RBAC
+  kubernetes.core.k8s:
+    state: present
+    merge_type:
+    - merge
+    definition: "{{ lookup('ansible.builtin.template', 'base-argocd-etx-patch.yaml.j2') | from_yaml }}"
+  when: etx_patch_base_argocd | bool
+
+- name: Create repository credential for private Git access
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', 'repository-secret.yaml.j2') | from_yaml }}"
+  when: etx_git_token | length > 0
+  no_log: true
+
+- name: Create ETX infra root Application
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', 'etx-infra-application.yaml.j2') | from_yaml }}"
+
+- name: Wait for ETX infra root Application to reconcile
+  kubernetes.core.k8s_info:
+    api_version: argoproj.io/v1alpha1
+    kind: Application
+    namespace: "{{ etx_infra_application_namespace }}"
+    name: "{{ etx_infra_application_name }}"
+  register: etx_infra_application_status
+  retries: "{{ etx_application_wait_retries }}"
+  delay: "{{ etx_application_wait_delay }}"
+  until:
+  - etx_infra_application_status.resources | length > 0
+  - etx_infra_application_status.resources[0].status.sync.status | default('') == 'Synced'
+  - etx_infra_application_status.resources[0].status.health.status | default('') in ['Healthy', 'Progressing']
+  when:
+  - etx_wait_for_applications | bool
+  - etx_wait_for_infra_before_control_plane | bool
+
+- name: Create ETX control-plane root Application
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', 'etx-control-plane-application.yaml.j2') | from_yaml }}"

@@ -1,0 +1,73 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ etx_control_plane_application_name }}
+  namespace: {{ etx_control_plane_application_namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: {{ etx_git_repo_url }}
+    targetRevision: {{ etx_git_revision }}
+    path: {{ etx_control_plane_application_path }}
+    helm:
+      values: |
+        deployer:
+          domain: {{ etx_cluster_domain_effective }}
+          apiUrl: {{ etx_cluster_api_url_effective }}
+          guid: {{ etx_cluster_guid_effective }}
+
+        gitops:
+          namespace: etx-gitops
+
+        keycloakEtxLab:
+          enabled: true
+          git:
+            repoURL: {{ etx_git_repo_url }}
+            targetRevision: {{ etx_git_revision }}
+        gitlabEtxLab:
+          enabled: {{ etx_gitlab_enabled | bool | lower }}
+          instance:
+            seedRepository:
+              githubToken: {{ etx_git_token | quote }}
+          git:
+            repoURL: {{ etx_git_repo_url }}
+            targetRevision: {{ etx_git_revision }}
+        quayEtxLab:
+          enabled: {{ etx_quay_enabled | bool | lower }}
+          git:
+            repoURL: {{ etx_git_repo_url }}
+            targetRevision: {{ etx_git_revision }}
+        vaultEtxLab:
+          enabled: {{ etx_vault_enabled | bool | lower }}
+          oidcAuth:
+            clientSecret: {{ etx_vault_oidc_client_secret_effective }}
+          git:
+            repoURL: {{ etx_git_repo_url }}
+            targetRevision: {{ etx_git_revision }}
+        multiClusterSetup:
+          enabled: {{ etx_multicluster_enabled | bool | lower }}
+          git:
+            repoURL: {{ etx_git_repo_url }}
+            targetRevision: {{ etx_git_revision }}
+        gitlabSeed:
+          enabled: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ etx_gitops_namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 5m

@@ -1,0 +1,81 @@
+{{- if .Values.platformValues.keycloakEtxLab.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: etx-keycloak
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: etx-keycloak
+    app.kubernetes.io/part-of: etx-lab-bootstrap
+    demo.redhat.com/platform: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.platformValues.keycloakEtxLab.git.repoURL }}
+    targetRevision: {{ .Values.platformValues.keycloakEtxLab.git.targetRevision }}
+    path: {{ .Values.platformValues.keycloakEtxLab.git.path }}
+    helm:
+      values: |
+        namespace: {{ .Values.platformValues.keycloakEtxLab.namespace }}
+        deployer:
+          domain: {{ .Values.deployer.domain }}
+        instance:
+          replicas: {{ .Values.platformValues.keycloakEtxLab.instance.replicas }}
+          hostname: etx-sso.{{ .Values.deployer.domain }}
+        realm:
+          {{- toYaml .Values.platformValues.keycloakEtxLab.realm | nindent 10 }}
+        users:
+          {{- toYaml .Values.platformValues.keycloakEtxLab.users | nindent 10 }}
+        clients:
+          gitlab:
+            enabled: {{ .Values.platformValues.keycloakEtxLab.clients.gitlab.enabled }}
+            clientId: {{ .Values.platformValues.keycloakEtxLab.clients.gitlab.clientId }}
+            redirectUris:
+              - https://gitlab.{{ .Values.deployer.domain }}/users/auth/openid_connect/callback
+          quay:
+            enabled: {{ .Values.platformValues.keycloakEtxLab.clients.quay.enabled }}
+            clientId: {{ .Values.platformValues.keycloakEtxLab.clients.quay.clientId }}
+            redirectUris:
+              - https://quay.{{ .Values.deployer.domain }}/oauth2/callback
+              - https://quay.{{ .Values.deployer.domain }}/oauth2/redhat/callback
+              - https://quay.{{ .Values.deployer.domain }}/*
+          argocd:
+            enabled: {{ .Values.platformValues.keycloakEtxLab.clients.argocd.enabled }}
+            clientId: {{ .Values.platformValues.keycloakEtxLab.clients.argocd.clientId }}
+            clientSecret: {{ .Values.platformValues.keycloakEtxLab.clients.argocd.clientSecret }}
+            redirectUris:
+              - https://etx-gitops-server-{{ .Values.etxGitops.namespace }}.{{ .Values.deployer.domain }}/auth/callback
+            webOrigins:
+              - https://etx-gitops-server-{{ .Values.etxGitops.namespace }}.{{ .Values.deployer.domain }}
+          vault:
+            enabled: {{ .Values.platformValues.keycloakEtxLab.clients.vault.enabled }}
+            clientId: {{ .Values.platformValues.keycloakEtxLab.clients.vault.clientId }}
+            clientSecret: {{ .Values.platformValues.keycloakEtxLab.clients.vault.clientSecret }}
+            redirectUris:
+              - https://vault.{{ .Values.deployer.domain }}/ui/vault/auth/oidc/oidc/callback
+              - http://localhost:8250/oidc/callback
+        groups:
+          {{- toYaml .Values.platformValues.keycloakEtxLab.groups | nindent 10 }}
+        clientScopes:
+          {{- toYaml .Values.platformValues.keycloakEtxLab.clientScopes | nindent 10 }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.platformValues.keycloakEtxLab.namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

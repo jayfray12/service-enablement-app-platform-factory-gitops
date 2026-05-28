@@ -1,0 +1,12 @@
+apiVersion: v2
+name: keycloak-etx-lab
+version: 1.0.0
+description: Keycloak instance with ETX Lab realm, users, and OIDC clients
+type: application
+keywords:
+  - keycloak
+  - sso
+  - oidc
+  - etx-lab
+maintainers:
+  - name: ETX Platform Team

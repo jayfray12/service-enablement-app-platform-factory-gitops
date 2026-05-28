@@ -1,0 +1,98 @@
+{{- if .Values.vaultEtxLab.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: etx-vault
+  namespace: {{ .Values.gitops.namespace }}
+  labels:
+    app.kubernetes.io/name: etx-vault
+    app.kubernetes.io/part-of: etx-lab-platform
+    demo.redhat.com/platform: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.vaultEtxLab.git.repoURL }}
+    targetRevision: {{ .Values.vaultEtxLab.git.targetRevision }}
+    path: {{ .Values.vaultEtxLab.git.path }}
+    helm:
+      values: |
+        namespace: {{ .Values.vaultEtxLab.namespace }}
+        deployer:
+          domain: {{ .Values.deployer.domain }}
+        kubernetesAuth:
+          enabled: {{ .Values.vaultEtxLab.kubernetesAuth.enabled }}
+          role: {{ .Values.vaultEtxLab.kubernetesAuth.role }}
+          policy: {{ .Values.vaultEtxLab.kubernetesAuth.policy }}
+          policyRules: |
+            {{- .Values.vaultEtxLab.kubernetesAuth.policyRules | nindent 12 }}
+        oidcAuth:
+          enabled: {{ .Values.vaultEtxLab.oidcAuth.enabled }}
+          discoveryUrl: https://etx-sso.{{ .Values.deployer.domain }}/realms/etx-lab
+          clientId: {{ .Values.vaultEtxLab.oidcAuth.clientId }}
+          clientSecret: {{ .Values.vaultEtxLab.oidcAuth.clientSecret }}
+          defaultRole: {{ .Values.vaultEtxLab.oidcAuth.defaultRole }}
+        vault:
+          global:
+            openshift: true
+          injector:
+            enabled: false
+          csi:
+            enabled: false
+          server:
+            image:
+              repository: docker.io/hashicorp/vault
+              tag: 1.18.5
+            authDelegator:
+              enabled: true
+            route:
+              enabled: true
+              host: vault.{{ .Values.deployer.domain }}
+              tls:
+                termination: edge
+                insecureEdgeTerminationPolicy: Redirect
+            dataStorage:
+              enabled: true
+              size: {{ .Values.vaultEtxLab.instance.storage }}
+            resources:
+              {{- toYaml .Values.vaultEtxLab.instance.resources | nindent 14 }}
+            ha:
+              enabled: true
+              replicas: {{ .Values.vaultEtxLab.instance.replicas }}
+              raft:
+                enabled: true
+                setNodeId: true
+                config: |
+                  ui = true
+
+                  listener "tcp" {
+                    tls_disable = 1
+                    address = "[::]:8200"
+                    cluster_address = "[::]:8201"
+                  }
+
+                  storage "raft" {
+                    path = "/vault/data"
+                  }
+
+                  service_registration "kubernetes" {}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.vaultEtxLab.namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false  # Created by workload chart
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

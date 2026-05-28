@@ -1,0 +1,53 @@
+{{- if .Values.gitlabEtxLab.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: etx-gitlab
+  namespace: {{ .Values.gitops.namespace }}
+  labels:
+    app.kubernetes.io/name: etx-gitlab
+    app.kubernetes.io/part-of: etx-lab-platform
+    demo.redhat.com/platform: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.gitlabEtxLab.git.repoURL }}
+    targetRevision: {{ .Values.gitlabEtxLab.git.targetRevision }}
+    path: {{ .Values.gitlabEtxLab.git.path }}
+    helm:
+      values: |
+        namespace: {{ .Values.gitlabEtxLab.namespace }}
+        deployer:
+          domain: {{ .Values.deployer.domain }}
+        gitops:
+          namespace: {{ .Values.gitops.namespace }}
+        instance:
+          hostname: gitlab
+          oidc:
+            enabled: {{ .Values.gitlabEtxLab.instance.oidc.enabled }}
+            provider: {{ .Values.gitlabEtxLab.instance.oidc.provider }}
+            issuer: https://etx-sso.{{ .Values.deployer.domain }}/realms/etx-lab
+            clientId: {{ .Values.gitlabEtxLab.instance.oidc.clientId }}
+          seedRepository:
+            githubToken: {{ .Values.gitlabEtxLab.instance.seedRepository.githubToken | quote }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.gitlabEtxLab.namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 5m
+{{- end }}

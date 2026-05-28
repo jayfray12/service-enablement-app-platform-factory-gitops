@@ -1,0 +1,199 @@
+# etx-infra-app/migrated-source/bootstrap/values.yaml
+#
+# ETX Lab Workshop Infrastructure Bootstrap - Entry Point
+#
+# This is the entry-point Helm chart for the infra layer.
+# The Ansible role ocp4_workload_gitops_bootstrap creates a single ArgoCD Application
+# called "etx-bootstrap-infra" that points at etx-infra-app/migrated-source/bootstrap/ and renders this chart.
+#
+# What this chart does:
+#   1. Creates ArgoCD AppProjects: infra, platform, tenants
+#   2. Creates a ConfigMap (labeled demo.redhat.com/infra: "true") for provision data
+#   3. Spawns the platform layer by creating the "etx-bootstrap-platform" Application
+#   4. Creates child Applications for each enabled infra workload
+#
+# HOW TO CONTROL FROM CATALOG:
+#   In your AgnosticV cluster common.yaml, set:
+#     ocp4_workload_gitops_bootstrap_helm_values:
+#       keycloakOperator:
+#         enabled: true
+#       platformValues:            # <-- forwarded to platform bootstrap
+#         keycloakEtxLab:
+#           enabled: true
+
+# ---------------------------------------------------------------------------
+# Git defaults — applied to every workload via YAML anchors
+# ---------------------------------------------------------------------------
+default_settings: &git_defaults
+  repoURL: https://github.com/rhpds/service-enablement-app-platform-factory-gitops.git
+  targetRevision: main
+
+# ---------------------------------------------------------------------------
+# deployer — injected automatically by ocp4_workload_gitops_bootstrap role
+# These placeholders exist only for local `helm template` testing
+# Never set these in the catalog; the role always overwrites them
+# ---------------------------------------------------------------------------
+deployer:
+  domain: apps.cluster-guid.sandbox.opentlc.com
+  apiUrl: https://api.cluster-guid.sandbox.opentlc.com:6443
+  guid: guid
+
+# ---------------------------------------------------------------------------
+# platform — spawns the platform bootstrap layer
+# Always keep enabled: true
+# ---------------------------------------------------------------------------
+platform:
+  enabled: true
+  git:
+    path: etx-control-plane-app/migrated-source/bootstrap
+    <<: *git_defaults
+
+etxGitops:
+  enabled: true
+  namespace: etx-gitops
+  sso:
+    clientId: argocd
+    clientSecret: changeme
+  git:
+    repoURL: https://github.com/rhpds/service-enablement-app-platform-factory-gitops.git
+    path: etx-infra-app/migrated-source/workloads/etx-gitops
+    <<: *git_defaults
+  repo:
+    url: https://github.com/rhpds/service-enablement-app-platform-factory-gitops.git
+    username: git
+    password: ""
+
+# ---------------------------------------------------------------------------
+# platformValues — values forwarded to ETX platform workloads.
+# keycloakEtxLab now remains bootstrap-owned so its defaults live here as well.
+# ---------------------------------------------------------------------------
+platformValues:
+  keycloakEtxLab:
+    enabled: false
+    namespace: etx-keycloak
+    instance:
+      replicas: 1
+      hostname: etx-sso.{{ .Values.deployer.domain }}
+    realm:
+      name: etx-lab
+      displayName: "ETX Lab Workshop"
+    users:
+      - username: platform-admin
+        password: openshift
+        firstName: Platform
+        lastName: Admin
+      - username: platform-user
+        password: openshift
+        firstName: Platform
+        lastName: User
+      - username: platform-developer
+        password: openshift
+        firstName: Platform
+        lastName: Developer
+    clients:
+      gitlab:
+        enabled: true
+        clientId: gitlab
+        redirectUris:
+          - https://gitlab.{{ .Values.deployer.domain }}/users/auth/openid_connect/callback
+      quay:
+        enabled: true
+        clientId: quay
+        redirectUris:
+          - https://quay.{{ .Values.deployer.domain }}/oauth2/callback
+          - https://quay.{{ .Values.deployer.domain }}/oauth2/redhat/callback
+          - https://quay.{{ .Values.deployer.domain }}/*
+      argocd:
+        enabled: true
+        clientId: argocd
+        clientSecret: changeme
+      vault:
+        enabled: true
+        clientId: vault
+        clientSecret: changeme
+        redirectUris:
+          - https://vault.{{ .Values.deployer.domain }}/ui/vault/auth/oidc/oidc/callback
+          - http://localhost:8250/oidc/callback
+    groups:
+      - name: argocd-admins
+    clientScopes:
+      groups:
+        enabled: true
+        name: groups
+    git:
+      path: etx-control-plane-app/migrated-source/workloads/keycloak-etx-lab
+      <<: *git_defaults
+
+# ===========================================================================
+# WORKLOADS LIBRARY - ETX Lab Infrastructure
+# Pre-built Helm charts for ETX Lab operators
+# All disabled by default - enable from catalog
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# keycloakOperator — Red Hat Build of Keycloak operator
+# Installs RHBK operator for SSO/OIDC
+# Paired with platform workload: keycloakEtxLab
+# ISOLATION: Uses dedicated namespace etx-keycloak (NOT keycloak)
+# ---------------------------------------------------------------------------
+keycloakOperator:
+  enabled: false
+  namespace: etx-keycloak
+  channel: stable-v26.4
+  git:
+    path: etx-infra-app/migrated-source/workloads/keycloak-operator
+    <<: *git_defaults
+
+# ---------------------------------------------------------------------------
+# quayOperator — Red Hat Quay container registry operator
+# Installs Quay operator for enterprise registry
+# Paired with platform workload: quayEtxLab
+# ---------------------------------------------------------------------------
+quayOperator:
+  enabled: false
+  namespace: quay
+  channel: stable-3.13
+  git:
+    path: etx-infra-app/migrated-source/workloads/quay-operator
+    <<: *git_defaults
+
+# ---------------------------------------------------------------------------
+# gitopsOperator — OpenShift GitOps (Argo CD) operator
+# Installs GitOps operator for infrastructure automation
+# Note: Students deploy their own Argo CD instance in Lab 1
+# ---------------------------------------------------------------------------
+gitopsOperator:
+  enabled: false
+  namespace: openshift-gitops
+  channel: latest
+  git:
+    path: etx-infra-app/migrated-source/workloads/gitops-operator
+    <<: *git_defaults
+
+# ---------------------------------------------------------------------------
+# vaultSecretsOperator — HashiCorp Vault Secrets Operator
+# Installs Vault Secrets Operator for secrets management integration
+# Paired with platform workload: vaultEtxLab
+# CLUSTER-WIDE: Installs to openshift-operators (AllNamespaces mode)
+# ---------------------------------------------------------------------------
+vaultSecretsOperator:
+  enabled: false
+  namespace: openshift-operators
+  channel: stable
+  git:
+    path: etx-infra-app/migrated-source/workloads/vault-secrets-operator
+    <<: *git_defaults
+
+# ---------------------------------------------------------------------------
+# webTerminalOperator — OpenShift Web Terminal Operator
+# Installs Web Terminal for browser-based CLI access with pre-installed tools
+# REQUIRED for ETX workshop - enables browser-based terminal access
+# PRE-INSTALLED: oc, kubectl, git, helm, tekton, knative, jq, vim
+# ---------------------------------------------------------------------------
+webTerminalOperator:
+  enabled: true
+  namespace: openshift-operators
+  channel: fast
+  git:
+    path: etx-infra-app/migrated-source/workloads/web-terminal-operator
+    <<: *git_defaults
