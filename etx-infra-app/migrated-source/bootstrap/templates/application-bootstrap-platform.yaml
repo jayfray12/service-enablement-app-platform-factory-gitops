@@ -24,10 +24,9 @@ spec:
 
         gitops:
           namespace: {{ .Values.etxGitops.namespace }}
-        {{- with (omit .Values.platformValues "keycloakEtxLab") }}
-        {{- if . }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
+
+        {{- if .Values.platformValues }}
+        {{- toYaml (omit .Values.platformValues "keycloakEtxLab") | nindent 8 }}
         {{- end }}
   destination:
     server: https://kubernetes.default.svc
