@@ -62,9 +62,25 @@ data:
   quay_admin_password: "disabled"
   {{- end }}
 
+  # Vault (HashiCorp Vault)
+  {{- if get $vaultEtxLab "enabled" }}
+  vault_url: {{ printf "https://vault.%s" .Values.deployer.domain | quote }}
+  vault_note: "Access via Keycloak OIDC or Kubernetes auth"
+  {{- else }}
+  vault_url: "disabled"
+  vault_note: "disabled"
+  {{- end }}
+
   # ETX GitOps (Argo CD)
   argocd_url: {{ printf "https://etx-gitops-server-%s.%s" .Values.etxGitops.namespace .Values.deployer.domain | quote }}
+  argocd_etx_url: {{ printf "https://etx-gitops-server-%s.%s" .Values.etxGitops.namespace .Values.deployer.domain | quote }}
   argocd_note: "ETX GitOps admin plane. openshift-gitops remains the hidden bootstrap control plane."
+
+  # OpenShift Console
+  openshift_console_url: {{ printf "https://console-openshift-console.%s" .Values.deployer.domain | quote }}
+  openshift_cluster_ingress_domain: {{ .Values.deployer.domain | quote }}
+  openshift_cluster_guid: {{ .Values.deployer.guid | quote }}
+  openshift_api_url: {{ .Values.deployer.apiUrl | quote }}
 
   # Workshop Metadata
   workshop_name: "ETX Lab - Day 1 & 2"
