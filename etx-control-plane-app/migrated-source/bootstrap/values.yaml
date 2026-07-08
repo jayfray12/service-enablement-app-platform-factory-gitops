@@ -51,7 +51,7 @@ gitops:
 # ISOLATION: Uses dedicated namespace etx-keycloak (NOT keycloak)
 # ---------------------------------------------------------------------------
 keycloakEtxLab:
-  enabled: false
+  enabled: true
   namespace: etx-keycloak
   # Keycloak instance configuration
   instance:
@@ -120,7 +120,7 @@ keycloakEtxLab:
 # Uses Keycloak OIDC for authentication
 # ---------------------------------------------------------------------------
 gitlabEtxLab:
-  enabled: false
+  enabled: true
   namespace: gitlab
   # GitLab instance configuration
   instance:
@@ -144,7 +144,7 @@ gitlabEtxLab:
 # Uses Keycloak OIDC for authentication
 # ---------------------------------------------------------------------------
 quayEtxLab:
-  enabled: false
+  enabled: true
   namespace: quay
   # Quay instance configuration
   instance:
@@ -171,7 +171,7 @@ quayEtxLab:
 # WORKSHOP BASELINE: official chart + integrated Raft storage, single replica
 # ---------------------------------------------------------------------------
 vaultEtxLab:
-  enabled: false
+  enabled: true
   namespace: vault
   instance:
     replicas: 1
@@ -210,7 +210,7 @@ vaultEtxLab:
 # Secondary environment namespaces are created by scripts/enroll-secondary-cluster.sh.
 # ---------------------------------------------------------------------------
 multiClusterSetup:
-  enabled: false
+  enabled: true
   # Primary cluster namespaces
   primaryCluster:
     namespaces:
@@ -232,7 +232,7 @@ multiClusterSetup:
 # Runs as Kubernetes Job after GitLab is ready
 # ---------------------------------------------------------------------------
 gitlabSeed:
-  enabled: false
+  enabled: true
   # GitLab connection
   gitlab:
     url: https://gitlab.{{ .Values.deployer.domain }}

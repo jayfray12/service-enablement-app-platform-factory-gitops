@@ -69,7 +69,7 @@ etxGitops:
 # ---------------------------------------------------------------------------
 platformValues:
   keycloakEtxLab:
-    enabled: false
+    enabled: true
     namespace: etx-keycloak
     instance:
       replicas: 1
@@ -123,6 +123,16 @@ platformValues:
     git:
       path: etx-control-plane-app/migrated-source/workloads/keycloak-etx-lab
       <<: *git_defaults
+  gitlabEtxLab:
+    enabled: true
+  quayEtxLab:
+    enabled: true
+  vaultEtxLab:
+    enabled: true
+  multiClusterSetup:
+    enabled: true
+  gitlabSeed:
+    enabled: true
 
 # ===========================================================================
 # WORKLOADS LIBRARY - ETX Lab Infrastructure
@@ -137,7 +147,7 @@ platformValues:
 # ISOLATION: Uses dedicated namespace etx-keycloak (NOT keycloak)
 # ---------------------------------------------------------------------------
 keycloakOperator:
-  enabled: false
+  enabled: true
   namespace: etx-keycloak
   channel: stable-v26.4
   git:
@@ -150,7 +160,7 @@ keycloakOperator:
 # Paired with platform workload: quayEtxLab
 # ---------------------------------------------------------------------------
 quayOperator:
-  enabled: false
+  enabled: true
   namespace: quay
   channel: stable-3.13
   git:
@@ -177,7 +187,7 @@ gitopsOperator:
 # CLUSTER-WIDE: Installs to openshift-operators (AllNamespaces mode)
 # ---------------------------------------------------------------------------
 vaultSecretsOperator:
-  enabled: false
+  enabled: true
   namespace: openshift-operators
   channel: stable
   git:
