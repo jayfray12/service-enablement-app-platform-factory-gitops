@@ -58,7 +58,7 @@ data:
       # Get group ID
       GROUP_ID=$(curl -k -s "$GITLAB_URL/api/v4/groups/$target_group" \
         --header "PRIVATE-TOKEN: $GITLAB_TOKEN" | \
-        grep -o '"id":[0-9]*' | head -1 | cut -d':' -f2)
+        python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('id', ''))" 2>/dev/null || echo "")
 
       if [ -z "$GROUP_ID" ]; then
         echo "❌ Failed to get group ID for: $target_group"

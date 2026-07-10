@@ -4,6 +4,13 @@ metadata:
   name: etx-gitops
   namespace: {{ .Values.namespace }}
 spec:
+  # Allow this ArgoCD to manage resources in platform namespaces
+  # Required for OpenShift GitOps 1.20+ compatibility in namespaced mode
+  sourceNamespaces:
+    - {{ .Values.namespace }}
+    - gitlab
+    - vault
+    - quay
   server:
     route:
       enabled: true

@@ -71,6 +71,28 @@
   - etx_wait_for_applications | bool
   - etx_wait_for_infra_before_control_plane | bool
 
+- name: Pre-create platform namespaces for ArgoCD namespaced mode compatibility
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ item.name }}"
+        labels:
+          demo.redhat.com/platform: "true"
+          argocd.argoproj.io/instance: etx-gitops
+  loop:
+    - name: gitlab
+      enabled: "{{ etx_gitlab_enabled }}"
+    - name: vault
+      enabled: "{{ etx_vault_enabled }}"
+    - name: quay
+      enabled: "{{ etx_quay_enabled }}"
+  when: item.enabled | bool
+  loop_control:
+    label: "{{ item.name }}"
+
 - name: Create ETX control-plane root Application
   kubernetes.core.k8s:
     state: present
