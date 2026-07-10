@@ -21,7 +21,7 @@ spec:
       serviceAccountName: gitlab-seed
       containers:
       - name: seed
-        image: registry.redhat.io/ubi9/ubi:latest
+        image: registry.access.redhat.com/ubi9/python-311:latest
         command:
         - /bin/bash
         - /scripts/seed.sh

@@ -14,13 +14,14 @@ data:
     GITLAB_URL="{{ .Values.gitlab.url }}"
     GITLAB_TOKEN="${GITLAB_ROOT_TOKEN}"
 
+    export GIT_TERMINAL_PROMPT=0
+
     echo "==================================="
     echo "GitLab Repository Seeding"
     echo "==================================="
     echo "GitLab URL: $GITLAB_URL"
     echo ""
 
-    # Function to create GitLab group
     create_group() {
       local group_name=$1
       local group_path=$2
@@ -28,7 +29,7 @@ data:
       echo "Creating group: $group_name ($group_path)"
 
       curl -k -s -X POST "$GITLAB_URL/api/v4/groups" \
-        --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+        --header "Authorization: Bearer $GITLAB_ACCESS_TOKEN" \
         --header "Content-Type: application/json" \
         --data "{
           \"name\": \"$group_name\",
@@ -37,13 +38,13 @@ data:
         }" | grep -q "id" && echo "✅ Group created: $group_path" || echo "⚠️  Group may already exist: $group_path"
     }
 
-    # Function to create and seed repository
     seed_repository() {
       local repo_name=$1
       local source_url=$2
       local target_group=$3
       local visibility=$4
       local description=$5
+      local project_path project_response project_id empty_repo
 
       echo ""
       echo "-----------------------------------"
@@ -52,12 +53,21 @@ data:
       echo "Target: $target_group/$repo_name"
       echo "-----------------------------------"
 
-      # Create project in GitLab
+      project_path="${target_group}/${repo_name}"
+      project_response=$(curl -k -s "$GITLAB_URL/api/v4/projects/${target_group}%2F${repo_name}" \
+        --header "Authorization: Bearer $GITLAB_ACCESS_TOKEN")
+      project_id=$(echo "$project_response" | grep -o '"id":[0-9]*' | head -1 | cut -d':' -f2)
+      empty_repo=$(echo "$project_response" | grep -o '"empty_repo":\(true\|false\)' | head -1 | cut -d':' -f2)
+
+      if [ -n "$project_id" ] && [ "$empty_repo" = "false" ]; then
+        echo "✅ Project already seeded: $project_path"
+        return 0
+      fi
+
       echo "Creating GitLab project..."
 
-      # Get group ID
       GROUP_ID=$(curl -k -s "$GITLAB_URL/api/v4/groups/$target_group" \
-        --header "PRIVATE-TOKEN: $GITLAB_TOKEN" | \
+        --header "Authorization: Bearer $GITLAB_ACCESS_TOKEN" | \
         python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('id', ''))" 2>/dev/null || echo "")
 
       if [ -z "$GROUP_ID" ]; then
@@ -65,58 +75,48 @@ data:
         return 1
       fi
 
-      # Create project
-      PROJECT_RESPONSE=$(curl -k -s -X POST "$GITLAB_URL/api/v4/projects" \
-        --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
-        --header "Content-Type: application/json" \
-        --data "{
-          \"name\": \"$repo_name\",
-          \"namespace_id\": $GROUP_ID,
-          \"visibility\": \"$visibility\",
-          \"description\": \"$description\",
-          \"initialize_with_readme\": false
-        }")
+      if [ -z "$project_id" ]; then
+        project_response=$(curl -k -s -X POST "$GITLAB_URL/api/v4/projects" \
+          --header "Authorization: Bearer $GITLAB_ACCESS_TOKEN" \
+          --header "Content-Type: application/json" \
+          --data "{
+            \"name\": \"$repo_name\",
+            \"path\": \"$repo_name\",
+            \"namespace_id\": $GROUP_ID,
+            \"visibility\": \"$visibility\",
+            \"description\": \"$description\",
+            \"initialize_with_readme\": false
+          }")
 
-      if echo "$PROJECT_RESPONSE" | grep -q "id"; then
-        echo "✅ Project created: $target_group/$repo_name"
+        project_id=$(echo "$project_response" | grep -o '"id":[0-9]*' | head -1 | cut -d':' -f2)
+        if [ -z "$project_id" ]; then
+          echo "❌ Failed to create project: $project_path"
+          echo "$project_response"
+          return 1
+        fi
+
+        echo "✅ Project created: $project_path (ID: $project_id)"
       else
-        echo "⚠️  Project may already exist: $target_group/$repo_name"
+        echo "⚠️  Project exists but is empty: $project_path (ID: $project_id)"
       fi
 
-      # Clone source repository
-      echo "Cloning source repository..."
+      echo "Mirroring source repository..."
       TEMP_DIR="/tmp/$repo_name-$$"
-      git clone --depth 1 "$source_url" "$TEMP_DIR" 2>/dev/null || {
-        echo "❌ Failed to clone: $source_url"
+      MIRROR_DIR="$TEMP_DIR/source.git"
+      GITLAB_REPO_URL="${GITLAB_URL/https:\/\//https://oauth2:${GITLAB_ACCESS_TOKEN}@}/${target_group}/${repo_name}.git"
+
+      if ! command -v git >/dev/null 2>&1; then
+        echo "❌ git is not installed in the seed container"
         return 1
-      }
+      fi
 
-      cd "$TEMP_DIR"
+      git -c credential.helper= clone --mirror "$source_url" "$MIRROR_DIR"
+      git -C "$MIRROR_DIR" push --mirror "$GITLAB_REPO_URL"
 
-      # Configure Git
-      git config user.email "seed@etx-lab.local"
-      git config user.name "ETX Lab Seeder"
-
-      # Push to GitLab
-      echo "Pushing to GitLab..."
-      GITLAB_REPO_URL="${GITLAB_URL/$'https://'/https://root:${GITLAB_TOKEN}@}/$target_group/$repo_name.git"
-
-      git remote remove origin
-      git remote add origin "$GITLAB_REPO_URL"
-      git push -u origin main --force 2>/dev/null || \
-      git push -u origin master --force 2>/dev/null || {
-        echo "❌ Failed to push to GitLab"
-        cd /
-        rm -rf "$TEMP_DIR"
-        return 1
-      }
-
-      cd /
       rm -rf "$TEMP_DIR"
-      echo "✅ Repository seeded: $target_group/$repo_name"
+      echo "✅ Repository seeded: $project_path"
     }
 
-    # Wait for GitLab to be fully ready
     echo "Waiting for GitLab API to be ready..."
     for i in {1..30}; do
       if curl -k -s -o /dev/null -w "%{http_code}" "$GITLAB_URL/api/v4/version" | grep -q "200\|401"; then
@@ -127,16 +127,25 @@ data:
       sleep 10
     done
 
-    # Create groups
+    echo "Obtaining GitLab API access token..."
+    TOKEN_RESPONSE=$(curl -k -s -X POST "$GITLAB_URL/oauth/token" \
+      --data "grant_type=password&username=root&password=$GITLAB_TOKEN")
+    GITLAB_ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | grep -o '"access_token":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+    if [ -z "$GITLAB_ACCESS_TOKEN" ]; then
+      echo "❌ Failed to obtain GitLab API access token"
+      exit 1
+    fi
+    echo "✅ GitLab API access token obtained"
+
     {{- range .Values.repositories }}
     {{- if .targetGroup }}
-    create_group "{{ .targetGroup | title }}" "{{ .targetGroup }}"
+    create_group "{{ .targetGroup }}" "{{ .targetGroup }}"
     {{- end }}
     {{- end }}
 
     sleep 5
 
-    # Seed repositories
     {{- range .Values.repositories }}
     seed_repository \
       "{{ .name }}" \
