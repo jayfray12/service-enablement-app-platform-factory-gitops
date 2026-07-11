@@ -47,7 +47,7 @@ spec:
               repository: docker.io/hashicorp/vault
               tag: 1.18.5
             authDelegator:
-              enabled: true
+              enabled: false  # ClusterRoleBinding managed outside ArgoCD for namespaced mode
             route:
               enabled: true
               host: vault.{{ .Values.deployer.domain }}

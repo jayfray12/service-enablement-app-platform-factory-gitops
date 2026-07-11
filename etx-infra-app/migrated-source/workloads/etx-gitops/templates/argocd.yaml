@@ -8,9 +8,27 @@ spec:
   # Required for OpenShift GitOps 1.20+ compatibility in namespaced mode
   sourceNamespaces:
     - {{ .Values.namespace }}
+    - etx-keycloak
     - gitlab
     - vault
     - quay
+  # Exclude cluster-scoped resources that cannot be managed in namespaced mode
+  # These resources (Namespace, ClusterRole, ClusterRoleBinding) must be created
+  # by openshift-gitops or via Ansible bootstrap before etx-gitops can use them
+  resourceExclusions: |
+    - apiGroups:
+      - ""
+      kinds:
+      - Namespace
+      clusters:
+      - "*"
+    - apiGroups:
+      - rbac.authorization.k8s.io
+      kinds:
+      - ClusterRole
+      - ClusterRoleBinding
+      clusters:
+      - "*"
   server:
     route:
       enabled: true
