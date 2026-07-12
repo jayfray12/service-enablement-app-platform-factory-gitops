@@ -94,3 +94,43 @@
   kubernetes.core.k8s:
     state: present
     definition: "{{ lookup('ansible.builtin.template', 'etx-control-plane-application.yaml.j2') | from_yaml }}"
+
+- name: Wait for etx-gitops ArgoCD instance to be created
+  kubernetes.core.k8s_info:
+    api_version: argoproj.io/v1beta1
+    kind: ArgoCD
+    namespace: etx-gitops
+    name: etx-gitops
+  register: etx_gitops_argocd
+  retries: 30
+  delay: 10
+  until:
+  - etx_gitops_argocd.resources | length > 0
+  - etx_gitops_argocd.resources[0].status.phase | default('') == 'Available'
+
+- name: Wait for etx-gitops cluster secret to be created
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    namespace: etx-gitops
+    name: etx-gitops-default-cluster-config
+  register: etx_cluster_secret
+  retries: 20
+  delay: 5
+  until:
+  - etx_cluster_secret.resources | length > 0
+
+- name: Update ArgoCD cluster secret with all sourceNamespaces
+  kubernetes.core.k8s:
+    state: patched
+    api_version: v1
+    kind: Secret
+    namespace: etx-gitops
+    name: etx-gitops-default-cluster-config
+    definition:
+      data:
+        namespaces: "{{ 'etx-gitops,etx-keycloak,gitlab,vault,quay' | b64encode }}"
+  retries: 5
+  delay: 3
+  register: etx_cluster_secret_update
+  until: etx_cluster_secret_update is succeeded
