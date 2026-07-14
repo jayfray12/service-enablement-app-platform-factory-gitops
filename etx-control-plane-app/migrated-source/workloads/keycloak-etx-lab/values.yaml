@@ -49,21 +49,21 @@ clients:
     clientId: gitlab
     redirectUris:
       - https://gitlab.apps.cluster-guid.sandbox.opentlc.com/users/auth/openid_connect/callback
-      - https://argocd-server-etx-app-dev.apps.cluster-guid.sandbox.opentlc.com/auth/callback
   quay:
     enabled: true
     clientId: quay
     redirectUris:
       - https://quay.apps.cluster-guid.sandbox.opentlc.com/oauth2/redhat/callback
-      - https://argocd-server-etx-app-dev.apps.cluster-guid.sandbox.opentlc.com
   argocd:
     enabled: true
     clientId: argocd
     clientSecret: changeme
     redirectUris:
       - https://etx-gitops-server-etx-gitops.apps.cluster-guid.sandbox.opentlc.com/auth/callback
+      - https://argocd-server-etx-app-dev.apps.cluster-guid.sandbox.opentlc.com/auth/callback
     webOrigins:
       - https://etx-gitops-server-etx-gitops.apps.cluster-guid.sandbox.opentlc.com
+      - https://argocd-server-etx-app-dev.apps.cluster-guid.sandbox.opentlc.com
   vault:
     enabled: true
     clientId: vault
