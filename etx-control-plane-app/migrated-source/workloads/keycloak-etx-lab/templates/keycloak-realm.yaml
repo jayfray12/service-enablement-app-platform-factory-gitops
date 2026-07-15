@@ -277,7 +277,6 @@ spec:
       - {{ . }}
       {{- end }}
       webOrigins:
-      {{- if .Values.clients.rhdh.webOrigins }}
       {{- range .Values.clients.rhdh.webOrigins }}
       - {{ . }}
       {{- end }}
