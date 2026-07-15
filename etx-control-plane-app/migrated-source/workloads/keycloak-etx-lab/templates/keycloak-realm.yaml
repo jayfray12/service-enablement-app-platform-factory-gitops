@@ -261,3 +261,55 @@ spec:
           access.token.claim: "true"
           userinfo.token.claim: "true"
     {{- end }}
+    {{- if .Values.clients.rhdh.enabled }}
+    - clientId: {{ .Values.clients.rhdh.clientId }}
+      enabled: true
+      protocol: openid-connect
+      publicClient: false
+      standardFlowEnabled: true
+      implicitFlowEnabled: false
+      directAccessGrantsEnabled: false
+      serviceAccountsEnabled: false
+      authorizationServicesEnabled: false
+      secret: etx-lab-workshop-gitlab-secret
+      redirectUris:
+      {{- range .Values.clients.rhdh.redirectUris }}
+      - {{ . }}
+      {{- end }}
+      webOrigins:
+      {{- if .Values.clients.rhdh.webOrigins }}
+      {{- range .Values.clients.rhdh.webOrigins }}
+      - {{ . }}
+      {{- end }}
+      defaultClientScopes:
+      - profile
+      - email
+      optionalClientScopes:
+      - address
+      - phone
+      - offline_access
+      - microprofile-jwt
+      protocolMappers:
+      - name: profile
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-property-mapper
+        consentRequired: false
+        config:
+          user.attribute: username
+          claim.name: preferred_username
+          jsonType.label: String
+          id.token.claim: "true"
+          access.token.claim: "true"
+          userinfo.token.claim: "true"
+      - name: email
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-property-mapper
+        consentRequired: false
+        config:
+          user.attribute: email
+          claim.name: email
+          jsonType.label: String
+          id.token.claim: "true"
+          access.token.claim: "true"
+          userinfo.token.claim: "true"
+    {{- end }}

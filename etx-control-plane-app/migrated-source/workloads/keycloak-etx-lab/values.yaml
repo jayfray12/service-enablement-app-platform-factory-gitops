@@ -71,6 +71,15 @@ clients:
     redirectUris:
       - https://vault.apps.cluster-guid.sandbox.opentlc.com/ui/vault/auth/oidc/oidc/callback
       - http://localhost:8250/oidc/callback
+  rhdh:
+    enabled: true
+    clientId: rhdh
+    clientSecret: changeme
+    redirectUris:
+      - https://backstage-rhdh-setup-rhdh.apps.cluster-id.sandbox.opentlc.com/api/auth/oidc/handler/frame
+    webOrigins:
+      - https://backstage-rhdh-setup-rhdh.apps.cluster-id.sandbox.opentlc.com
+
 
 groups:
   - name: argocd-admins
