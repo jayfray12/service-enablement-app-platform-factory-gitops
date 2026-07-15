@@ -244,6 +244,18 @@ gitlabSeed:
       description: "Parasol Insurance - Day 1 & 2 Lab"
       sourceUrl: https://github.com/rh-etx-app-platform/etx_app_base_app.git
       targetGroup: software-factory
+    - sourceUrl: https://github.com/rh-etx-app-platform/etx_app_mta_lab_coolstore.git
+      targetGroup: mta-apps
+      targetProject: coolstore
+      visibility: public
+      description: "Coolstore - Original Application"
+      name: coolstore
+    - sourceUrl: https://github.com/rh-etx-app-platform/etx_app_mta_lab_coolstore_migrated.git
+      targetGroup: mta-apps
+      targetProject: coolstore-migrated
+      visibility: public
+      description: "Coolstore - Migrated Application"
+      name: coolstore-migrated
   git:
     path: etx-control-plane-app/migrated-source/workloads/gitlab-seed
     <<: *git_defaults

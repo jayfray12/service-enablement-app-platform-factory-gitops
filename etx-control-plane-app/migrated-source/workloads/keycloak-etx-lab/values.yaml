@@ -60,8 +60,10 @@ clients:
     clientSecret: changeme
     redirectUris:
       - https://etx-gitops-server-etx-gitops.apps.cluster-guid.sandbox.opentlc.com/auth/callback
+      - https://argocd-server-etx-app-dev.apps.cluster-guid.sandbox.opentlc.com/auth/callback
     webOrigins:
       - https://etx-gitops-server-etx-gitops.apps.cluster-guid.sandbox.opentlc.com
+      - https://argocd-server-etx-app-dev.apps.cluster-guid.sandbox.opentlc.com
   vault:
     enabled: true
     clientId: vault
