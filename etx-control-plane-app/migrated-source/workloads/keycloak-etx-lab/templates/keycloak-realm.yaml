@@ -42,6 +42,16 @@ spec:
       {{- end }}
       {{- end }}
     {{- end }}
+    {{- if .Values.clients.rhdh.enabled }}
+    - username: service-account-{{ .Values.clients.rhdh.clientId }}
+      enabled: true
+      serviceAccountClientId: {{ .Values.clients.rhdh.clientId }}
+      clientRoles:
+        realm-management:
+          - query-users
+          - query-groups
+          - view-users
+    {{- end }}
 
     {{- if .Values.groups }}
     groups:
@@ -322,7 +332,7 @@ spec:
       standardFlowEnabled: true
       implicitFlowEnabled: false
       directAccessGrantsEnabled: false
-      serviceAccountsEnabled: false
+      serviceAccountsEnabled: true
       authorizationServicesEnabled: false
       secret: etx-lab-workshop-gitlab-secret
       redirectUris:
