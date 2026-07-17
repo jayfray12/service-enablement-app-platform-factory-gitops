@@ -49,8 +49,10 @@ spec:
             clientSecret: {{ .Values.keycloakEtxLab.clients.argocd.clientSecret }}
             redirectUris:
               - https://etx-gitops-server-{{ .Values.gitops.namespace }}.{{ .Values.deployer.domain }}/auth/callback
+              - https://argocd-server-etx-app-dev.{{ .Values.deployer.domain }}/auth/callback
             webOrigins:
               - https://etx-gitops-server-{{ .Values.gitops.namespace }}.{{ .Values.deployer.domain }}
+              - https://argocd-server-etx-app-dev.{{ .Values.deployer.domain }}
           vault:
             enabled: {{ .Values.keycloakEtxLab.clients.vault.enabled }}
             clientId: {{ .Values.keycloakEtxLab.clients.vault.clientId }}
