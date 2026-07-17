@@ -95,8 +95,10 @@ keycloakEtxLab:
       clientSecret: changeme
       redirectUris:
         - https://etx-gitops-server-{{ .Values.gitops.namespace }}.{{ .Values.deployer.domain }}/auth/callback
+        - https://argocd-server-etx-app-dev.{{ .Values.deployer.domain }}/auth/callback
       webOrigins:
         - https://etx-gitops-server-{{ .Values.gitops.namespace }}.{{ .Values.deployer.domain }}
+        - https://argocd-server-etx-app-dev.{{ .Values.deployer.domain }}
     vault:
       enabled: true
       clientId: vault

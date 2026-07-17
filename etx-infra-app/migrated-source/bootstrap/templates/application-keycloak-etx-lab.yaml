@@ -58,6 +58,14 @@ spec:
             redirectUris:
               - https://vault.{{ .Values.deployer.domain }}/ui/vault/auth/oidc/oidc/callback
               - http://localhost:8250/oidc/callback
+          rhdh:
+            enabled: {{ .Values.platformValues.keycloakEtxLab.clients.rhdh.enabled }}
+            clientId: {{ .Values.platformValues.keycloakEtxLab.clients.rhdh.clientId }}
+            clientSecret: {{ .Values.platformValues.keycloakEtxLab.clients.rhdh.clientSecret }}
+            redirectUris:
+              - https://backstage-rhdh-setup-rhdh.{{ .Values.deployer.domain }}/api/auth/oidc/handler/frame
+            webOrigins:
+              - https://backstage-rhdh-setup-rhdh.{{ .Values.deployer.domain }}
         groups:
           {{- toYaml .Values.platformValues.keycloakEtxLab.groups | nindent 10 }}
         clientScopes:
