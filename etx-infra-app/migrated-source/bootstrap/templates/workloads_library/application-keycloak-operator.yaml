@@ -20,7 +20,9 @@ spec:
     path: {{ .Values.keycloakOperator.git.path }}
     helm:
       values: |
-        namespace: {{ .Values.keycloakOperator.namespace }}
+        namespace:
+          create: false
+          name: {{ .Values.keycloakOperator.namespace }}
         subscription:
           channel: {{ .Values.keycloakOperator.channel }}
   destination:

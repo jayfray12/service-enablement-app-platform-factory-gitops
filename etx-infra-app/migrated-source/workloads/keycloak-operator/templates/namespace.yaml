@@ -1,7 +1,8 @@
+{{- if .Values.namespace.create }}
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: {{ .Values.namespace }}
+  name: {{ .Values.namespace.name }}
   labels:
     app.kubernetes.io/name: etx-keycloak
     app.kubernetes.io/instance: etx-keycloak
@@ -10,3 +11,4 @@ metadata:
     demo.redhat.com/infra: "true"
   annotations:
     description: "ETX Lab Keycloak - isolated from cluster's default SSO"
+{{- end }}

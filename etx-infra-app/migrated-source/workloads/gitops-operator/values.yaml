@@ -7,7 +7,9 @@
 # Students deploy their own ArgoCD instance in Lab 1.
 
 # Namespace where operator runs
-namespace: openshift-gitops
+namespace:
+  create: true
+  name: openshift-gitops
 
 # Operator Subscription settings
 subscription:

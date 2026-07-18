@@ -13,7 +13,9 @@
 
 # Namespace where operator and Keycloak instances will run
 # CRITICAL: Use dedicated namespace to isolate from cluster's default SSO
-namespace: etx-keycloak
+namespace:
+  create: true
+  name: etx-keycloak
 
 # Operator Subscription settings
 subscription:

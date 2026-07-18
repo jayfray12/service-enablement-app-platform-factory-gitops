@@ -20,7 +20,9 @@ spec:
     path: {{ .Values.quayOperator.git.path }}
     helm:
       values: |
-        namespace: {{ .Values.quayOperator.namespace }}
+        namespace:
+          create: false
+          name: {{ .Values.quayOperator.namespace }}
         subscription:
           channel: {{ .Values.quayOperator.channel }}
   destination:

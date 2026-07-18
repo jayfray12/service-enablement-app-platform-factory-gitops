@@ -20,7 +20,8 @@ spec:
     path: {{ .Values.gitopsOperator.git.path }}
     helm:
       values: |
-        namespace: {{ .Values.gitopsOperator.namespace }}
+        namespace:
+          name: {{ .Values.gitopsOperator.namespace }}
         subscription:
           channel: {{ .Values.gitopsOperator.channel }}
   destination:
