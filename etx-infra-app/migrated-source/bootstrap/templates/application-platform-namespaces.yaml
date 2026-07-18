@@ -28,6 +28,8 @@ spec:
             enabled: true
           etxKeycloak:
             enabled: true
+          multicluster:
+            enabled: {{ .Values.platformValues.multiClusterSetup.enabled }}          
   destination:
     server: https://kubernetes.default.svc
     namespace: default

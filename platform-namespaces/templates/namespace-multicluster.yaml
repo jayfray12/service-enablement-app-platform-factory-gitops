@@ -1,0 +1,13 @@
+{{- if .Values.namespaces.multicluster.enabled }}
+{{- range .Values.namespaces.multicluster.primaryCluster.namespaces }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ . }}
+  labels:
+    app.kubernetes.io/part-of: etx-lab-platform
+    demo.redhat.com/platform: "true"
+    etx-lab/environment: {{ . }}
+{{- end }}
+{{- end }}

@@ -11,3 +11,8 @@ namespaces:
     enabled: true
   etxKeycloak:
     enabled: true
+  multicluster:
+    enabled: true
+    primaryCluster:
+      namespaces:
+        - etx-app-dev
