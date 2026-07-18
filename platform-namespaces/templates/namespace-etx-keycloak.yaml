@@ -1,0 +1,13 @@
+{{- if .Values.namespaces.etxKeycloak.enabled }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: etx-keycloak
+  labels:
+    app.kubernetes.io/name: etx-keycloak
+    app.kubernetes.io/part-of: etx-lab-infrastructure
+    demo.redhat.com/platform: "true"
+  annotations:
+    description: "Keycloak SSO - Identity and access management"
+    argocd.argoproj.io/sync-wave: "0"
+{{- end }}

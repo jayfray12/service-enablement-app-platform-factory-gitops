@@ -1,0 +1,8 @@
+apiVersion: v2
+name: platform-namespaces
+description: Platform namespaces for ETX Lab - managed by openshift-gitops
+type: application
+version: 1.0.0
+appVersion: "1.0"
+maintainers:
+  - name: ETX Platform Team

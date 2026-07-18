@@ -1,0 +1,13 @@
+# Platform namespaces controlled by admin team
+# These are created by openshift-gitops (cluster-scoped)
+# before etx-gitops (namespaced) deploys workloads
+
+namespaces:
+  gitlab:
+    enabled: true
+  vault:
+    enabled: true
+  quay:
+    enabled: true
+  etxKeycloak:
+    enabled: true

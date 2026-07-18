@@ -1,0 +1,13 @@
+{{- if .Values.namespaces.gitlab.enabled }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gitlab
+  labels:
+    app.kubernetes.io/name: gitlab
+    app.kubernetes.io/part-of: etx-lab-infrastructure
+    demo.redhat.com/platform: "true"
+  annotations:
+    description: "GitLab CE - Source control and CI/CD"
+    argocd.argoproj.io/sync-wave: "0"
+{{- end }}
