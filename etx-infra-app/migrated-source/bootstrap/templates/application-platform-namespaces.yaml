@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-namespaces
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: platform-namespaces
+    app.kubernetes.io/part-of: etx-lab-infra
+    demo.redhat.com/infra: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: infra
+  source:
+    repoURL: https://github.com/rhpds/service-enablement-app-platform-factory-gitops.git
+    targetRevision: main
+    path: platform-namespaces
+    helm:
+      values: |
+        namespaces:
+          gitlab:
+            enabled: true
+          vault:
+            enabled: true
+          quay:
+            enabled: true
+          etxKeycloak:
+            enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

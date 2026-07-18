@@ -71,24 +71,8 @@
   - etx_wait_for_applications | bool
   - etx_wait_for_infra_before_control_plane | bool
 
-- name: Pre-create platform namespaces for ArgoCD namespaced mode compatibility
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: v1
-      kind: Namespace
-      metadata:
-        name: "{{ item.name }}"
-        labels:
-          demo.redhat.com/platform: "true"
-  loop:
-    - name: gitlab
-      enabled: "{{ etx_gitlab_enabled }}"
-    - name: vault
-      enabled: "{{ etx_vault_enabled }}"
-  when: item.enabled | bool
-  loop_control:
-    label: "{{ item.name }}"
+# Platform namespaces now created by openshift-gitops via platform-namespaces Application
+# This ensures 100% GitOps declarative infrastructure
 
 - name: Create ETX control-plane root Application
   kubernetes.core.k8s:
