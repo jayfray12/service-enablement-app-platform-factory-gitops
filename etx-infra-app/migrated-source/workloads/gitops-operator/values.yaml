@@ -7,8 +7,10 @@
 # Students deploy their own ArgoCD instance in Lab 1.
 
 # Namespace where operator runs
+# The openshift-gitops namespace is created automatically by the
+# OpenShift GitOps Operator installation, so we should not create it
 namespace:
-  create: true
+  create: false
   name: openshift-gitops
 
 # Operator Subscription settings

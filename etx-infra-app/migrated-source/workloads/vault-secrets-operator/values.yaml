@@ -16,9 +16,10 @@
 #   - No OperatorGroup needed (cluster-scoped)
 
 # Namespace where operator runs
-# Note: Vault Secrets Operator is cluster-scoped, always openshift-operators
+# The openshift-operators namespace is a built-in OpenShift namespace
+# that always exists, so we should not create it
 namespace:
-  create: true
+  create: false
   name: openshift-operators
 
 # Operator Subscription settings
